@@ -6,7 +6,7 @@
 
 // --- COSTANTI DI SICUREZZA ---
 #define HASH_LEN 65         // SHA256 hex string + null terminator
-#define ADDR_LEN 43         // Ethereum-style address + null
+#define ADDR_LEN 131        // Ethereum-style address + null
 #define SIGNATURE_LEN 129   // Firma ECDSA hex
 #define MAX_CONTENT_LEN 256 // Limite tweet
 #define MAX_NAME_LEN 32
