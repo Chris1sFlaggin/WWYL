@@ -16,14 +16,14 @@ In un'era digitale dominata da bot, fake news e like inflazionati, il valore del
 
 **WWYL** è un esperimento di **SocialFi** e **Sicurezza Informatica** che inverte questo paradigma.
 È un protocollo di *social betting* decentralizzato dove ogni post è una scommessa finanziaria contro la community.
-* Se il post sopravvive alla critica (Like > Dislike): Guadagni reputazione esponenziale (Streak) e token.
+* Se il post sopravvive alla critica (Like > Dislike): Entri in una streak in cui guadagni sempre più token.
 * Se il post viene rifiutato: Perdi la scommessa e la tua puntata viene distribuita a chi ti ha criticato.
 
 Il sistema utilizza la crittografia per rendere **matematicamente svantaggioso mentire**.
 
 ## 🛠 Architettura Tecnica
 Questo progetto non è un semplice social. È una **Blockchain Custom scritta da zero in C**.
-La scelta del linguaggio C è intenzionale: per garantire la massima sicurezza e performance, è necessario avere il controllo totale sulla memoria e sulla gestione crittografica, senza astrazioni di alto livello.
+La scelta del linguaggio C è intenzionale al fine di mostrare le mitigazioni imparate in C e sfruttare al massimo la memoria.
 
 ### Core Features
 * **Blockchain Event-Sourcing:** Non salviamo lo stato, salviamo la storia. Ogni azione (Post, Voto, Follow) è un blocco immutabile crittograficamente legato al precedente.
