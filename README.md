@@ -7,7 +7,7 @@
 ![Security](https://img.shields.io/badge/crypto-OpenSSL-red?style=for-the-badge&logo=openssl&logoColor=white)
 
 ### A Game-Theoretic Anarchist Decentralized Social Protocol 
-#### Progetto sviluppato per conseguite la mia tesi universitaria dal titolo "Sicurezza delle transazioni in ambito Blockchain: implementazione in C del protocollo Commit-Reveal contro il Front-Runnin".
+#### Progetto sviluppato per conseguite la mia tesi universitaria dal possibile titolo "Sicurezza delle transazioni in ambito Blockchain: implementazione in C del protocollo Commit-Reveal contro il Front-Runnin".
 
 > *"Freedom of speech is not freedom from consequences."*
 
