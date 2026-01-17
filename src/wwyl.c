@@ -476,10 +476,13 @@ Block *load_blockchain() {
     return root;
 }
 
+// ... (Tutto il codice sopra resta uguale: include, getBlockId, funzioni blockchain ...)
+
 int main() {
-    // Prima pulisci il vecchio DB: rm wwyl_chain.dat
+    // 1. CARICAMENTO E RICOSTRUZIONE STATO (Hashmap)
     Block *blockchain = load_blockchain();
 
+    // Troviamo la testa della catena per appendere nuovi blocchi
     Block *last = blockchain;
     while (last->next != NULL) {
         last = last->next;
@@ -488,57 +491,118 @@ int main() {
     printf("\n--- NODO AVVIATO ---\n");
     printf("[INFO] Ultimo blocco: #%d\n", last->index);
 
-    // TEST ALICE
+    // ---------------------------------------------------------
+    // TEST 1: CREAZIONE UTENTE 'ALICE'
+    // ---------------------------------------------------------
     printf("\n--- [TEST 1] Creazione Utente ALICE ---\n");
-    char alice_priv[SIGNATURE_LEN], alice_pub[SIGNATURE_LEN]; 
-    generate_keypair(alice_priv, alice_pub);
+    // Usiamo SIGNATURE_LEN per evitare warning del compilatore
+    char alice_priv[SIGNATURE_LEN], alice_pub[SIGNATURE_LEN];
+    generate_keypair(alice_priv, alice_pub); 
 
     Block *b_alice = register_user(last, 
-        &(PayloadRegister){.username="Alice", .bio="Crypto Fan", .pic_url="img/alice.png"}, 
-        alice_priv, alice_pub);
+        &(PayloadRegister){
+            .username="Alice", 
+            .bio="Crypto Enthusiast", 
+            .pic_url="img/alice.png"
+        }, 
+        alice_priv, alice_pub
+    );
 
     if (b_alice) {
         print_block(b_alice);
-        last = b_alice; 
+        last = b_alice; // Aggiorniamo la testa
+    } else {
+        printf("[INFO] Alice (o meglio, questa chiave) era già registrata.\n");
     }
 
-    // TEST BOB
+    // ---------------------------------------------------------
+    // TEST 1.5: SICUREZZA DOPPIA REGISTRAZIONE
+    // ---------------------------------------------------------
+    printf("\n--- [TEST 1.5] Tentativo Doppia Registrazione (Replay Attack) ---\n");
+    printf("[ACTION] Provo a registrare di nuovo Alice con le stesse chiavi...\n");
+    
+    Block *b_alice_dup = register_user(last, 
+        &(PayloadRegister){.username="Alice_Clone", .bio="Hacker"}, 
+        alice_priv, alice_pub); // <--- STESSE CHIAVI DI PRIMA!
+
+    if (b_alice_dup == NULL) {
+        printf("✅ [SECURE] Il sistema ha BLOCCATO la registrazione duplicata!\n");
+    } else {
+        printf("❌ [FAIL] ERRORE CRITICO: L'utente si è registrato due volte!\n");
+        last = b_alice_dup;
+    }
+
+    // ---------------------------------------------------------
+    // TEST 2: CREAZIONE UTENTE 'BOB'
+    // ---------------------------------------------------------
     printf("\n--- [TEST 2] Creazione Utente BOB ---\n");
     char bob_priv[SIGNATURE_LEN], bob_pub[SIGNATURE_LEN];
     generate_keypair(bob_priv, bob_pub);
 
     Block *b_bob = register_user(last, 
-        &(PayloadRegister){.username="Bob", .bio="Builder", .pic_url="img/bob.png"}, 
-        bob_priv, bob_pub);
+        &(PayloadRegister){
+            .username="Bob", 
+            .bio="Builder", 
+            .pic_url="img/bob.png"
+        }, 
+        bob_priv, bob_pub
+    );
 
     if (b_bob) {
         print_block(b_bob);
         last = b_bob;
     }
 
-    // VERIFICA CHE I DATI SIANO NELLO STATO
+    // VERIFICA STATO IN RAM
     UserState *s_alice = state_get_user(alice_pub);
     if (s_alice) {
-        printf("\n[CHECK STATE] Alice trovata in memoria: Username='%s', Bio='%s'\n", s_alice->username, s_alice->bio);
+        printf("\n[STATE CHECK] Alice in RAM: Username='%s', Balance=%d\n", s_alice->username, s_alice->token_balance);
     }
 
-    // TEST FOLLOW
+    // ---------------------------------------------------------
+    // TEST 3: ALICE SEGUE BOB (Follow)
+    // ---------------------------------------------------------
     printf("\n--- [TEST 3] Alice segue Bob ---\n");
+    
     PayloadFollow follow_payload;
     memset(&follow_payload, 0, sizeof(PayloadFollow));
+    // Importante: Copiare la chiave di Bob nel payload
     snprintf(follow_payload.target_user_pubkey, sizeof(follow_payload.target_user_pubkey), "%s", bob_pub);
 
     Block *b_follow = user_follow(last, &follow_payload, alice_priv, alice_pub);
+
     if (b_follow) {
         print_block(b_follow);
         last = b_follow;
     }
 
+    // Verifica immediata contatori
     UserState *s_bob = state_get_user(bob_pub);
-    printf("[CHECK] Bob Followers: %d\n", s_bob ? s_bob->followers_count : -1);
+    printf("[CHECK] Bob Followers: %d (Dovrebbe essere 1)\n", s_bob ? s_bob->followers_count : -1);
 
+
+    // ---------------------------------------------------------
+    // TEST 4: ALICE SEGUE DI NUOVO BOB (Toggle -> Unfollow)
+    // ---------------------------------------------------------
+    printf("\n--- [TEST 4] Alice ri-segue Bob (Logica Toggle -> Unfollow) ---\n");
+    
+    Block *b_unfollow = user_follow(last, &follow_payload, alice_priv, alice_pub);
+
+    if (b_unfollow) {
+        print_block(b_unfollow);
+        last = b_unfollow;
+    }
+
+    // Verifica contatori dopo unfollow
+    printf("[CHECK] Bob Followers: %d (Dovrebbe essere 0)\n", s_bob ? s_bob->followers_count : -1);
+
+
+    // ---------------------------------------------------------
+    // CHIUSURA E SALVATAGGIO
+    // ---------------------------------------------------------
     save_blockchain(blockchain);
-    state_cleanup();
-    EVP_cleanup();
+    state_cleanup(); // Pulisce la Hashmap
+    EVP_cleanup();   // Pulisce OpenSSL
+
     return 0;   
 }

@@ -152,7 +152,6 @@ void state_update_user(const char *wallet_address, const UserState *new_state) {
     world_state.count++;
 }
 
-// [CORRETTO] Ora salviamo i dati nello stato!
 void state_add_new_user(const char *wallet_address, const char *username, const char *bio, const char *pic) {
     UserState u = {0};
     snprintf(u.wallet_address, SIGNATURE_LEN, "%s", wallet_address);
@@ -173,6 +172,7 @@ void state_add_new_user(const char *wallet_address, const char *username, const 
     printf("[STATE] New User State created: %s (@%s)\n", wallet_address, u.username);
 }
 
+// [FIX] Rimosso ogni riferimento a post_index_vote/add
 void rebuild_state_from_chain(Block *genesis) {
     printf("[STATE] Rebuilding World State from Ledger...\n");
     Block *curr = genesis;
@@ -191,12 +191,8 @@ void rebuild_state_from_chain(Block *genesis) {
         if (curr->type == ACT_FOLLOW_USER) {
             state_toggle_follow(curr->sender_pubkey, curr->data.follow.target_user_pubkey);
         }
-        if (curr->type == ACT_POST_CONTENT) {
-            post_index_add(curr->index, curr->sender_pubkey);
-        }
-        if (curr->type == ACT_VOTE_REVEAL) {
-            post_index_vote(curr->data.reveal.target_post_id, curr->data.reveal.vote_value);
-        }
+        // [FIX] Qui c'era la logica dei post che causava errore. Rimossa.
+        
         curr = curr->next;
     }
     printf("[STATE] State Rebuilt. %d users active.\n", count);
