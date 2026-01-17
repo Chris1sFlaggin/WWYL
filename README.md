@@ -65,19 +65,20 @@ Ho implementato un processo di Serializzazione Deterministica e un flusso di fir
                v
       [ 3. FIRMA ECDSA (secp256k1) ]
       +--------------------------+
-      | Chiave Privata (Wallet)  | ---> [ OpenSSL EVP_DigestSign ]
-      +--------------------------+              |
-                                                v
-                                      [ 4. FIRMA DIGITALE (DER) ]
-                                      Blob binario ASN.1 (R + S)
-                                                |
-                                                v
-                                      [ 5. NORMALIZZAZIONE ]
-                                      Estrazione R (32b) + S (32b)
-                                      Padding Hex a 64 char l'uno
-                                                |
-                                                v
-   [ BLOCCO FIRMATO E VALIDO ]      <===========+
+      | Chiave Privata (Wallet)  | 
+      |[ OpenSSL EVP_DigestSign ]|
+      +--------------------------+              
+                    v
+      [ 4. FIRMA DIGITALE (DER) ]
+       Blob binario ASN.1 (R + S)
+                    |
+                    v
+        [ 5. NORMALIZZAZIONE ]
+      Estrazione R (32b) + S (32b)
+      Padding Hex a 64 char l'uno
+                    |
+                    v
+      [ BLOCCO FIRMATO E VALIDO ]      
    +-------------------------------------------------------+
    | Signature: 7c3b8a... (128 char hex string)            |
    +-------------------------------------------------------+
