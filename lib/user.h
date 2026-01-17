@@ -10,6 +10,7 @@
 #define INITIAL_MAP_SIZE 16 
 #define REL_MAP_SIZE 2048
 #define WELCOME_BONUS 10
+#define MAX_CAPACITY_LOAD 0.75
 
 // --- PROTOTIPI FUNZIONI UTENTE ---
 
@@ -17,7 +18,8 @@
 Block *register_user(Block *prev_block, const void *payload, const char *privkey_hex, const char *pubkey_hex);
 int user_login(const char *privkey_hex, const char *pubkey_hex);
 Block *user_follow(Block *prev_block, const void *payload, const char *privkey_hex, const char *pubkey_hex);
-
+Block *user_post(Block *prev_block, const void *payload, const char *privkey_hex, const char *pubkey_hex);
+Block *user_comment(Block *prev_block, const void *payload, const char *privkey_hex, const char *pubkey_hex);
 
 // --- STRUTTURE STATE MANAGEMENT ---
 

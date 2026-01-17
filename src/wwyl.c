@@ -14,6 +14,43 @@ unsigned long hash_int(int key, int size) {
 }
 
 // ---------------------------------------------------------
+// RIDIMENSIONA MAPPA POST (Dynamic Growth)
+// ---------------------------------------------------------
+void post_index_resize() {
+    int old_size = global_post_index.size;
+    PostStateNode **old_buckets = global_post_index.buckets;
+    
+    // Double the size
+    global_post_index.size = old_size * 2;
+    global_post_index.buckets = (PostStateNode**)safe_zalloc(global_post_index.size * sizeof(PostStateNode*));
+    global_post_index.count = 0; // Will be recounted during rehashing
+    
+    printf("[INDEX] Resizing hashmap from %d to %d buckets...\n", old_size, global_post_index.size);
+    
+    // Rehash all existing entries
+    for (int i = 0; i < old_size; i++) {
+        PostStateNode *curr = old_buckets[i];
+        while (curr) {
+            PostStateNode *next = curr->next;
+            
+            // Recalculate hash with new size
+            unsigned long new_idx = hash_int(curr->post_id, global_post_index.size);
+            
+            // Insert at new position
+            curr->next = global_post_index.buckets[new_idx];
+            global_post_index.buckets[new_idx] = curr;
+            global_post_index.count++;
+            
+            curr = next;
+        }
+    }
+    
+    // Free old bucket array (nodes were moved, not freed)
+    free(old_buckets);
+    printf("[INDEX] Resize complete. %d posts rehashed.\n", global_post_index.count);
+}
+
+// ---------------------------------------------------------
 // INIZIALIZZAZIONE MAPPA POST
 // ---------------------------------------------------------
 void post_index_init() {
@@ -23,9 +60,53 @@ void post_index_init() {
 }
 
 // ---------------------------------------------------------
+// OTTIENI DIMENSIONE MAPPA POST
+// ---------------------------------------------------------
+int post_index_size() {
+    return global_post_index.count;
+}
+
+// ---------------------------------------------------------
+// OTTIENI CAPACITÀ MAPPA POST
+// ---------------------------------------------------------
+int post_index_capacity() {
+    return global_post_index.size;
+}
+
+// ---------------------------------------------------------
+// OTTIENI AUTORE POST DALL'INDICE
+// ---------------------------------------------------------
+char *post_index_author(int post_id) {
+    PostState *state = post_index_get(post_id);
+    if (state) {
+        return state->author_pubkey;
+    }
+    return NULL;
+}
+
+// ---------------------------------------------------------
+// VERIFICA ESISTENZA POST NELL'INDICE
+// ---------------------------------------------------------
+int post_index_exists(int post_id) {
+    unsigned long idx = hash_int(post_id, global_post_index.size);
+    PostStateNode *curr = global_post_index.buckets[idx];
+    
+    while (curr) {
+        if (curr->post_id == post_id) return 1;
+        curr = curr->next;
+    }
+    return 0;
+}
+
+// ---------------------------------------------------------
 // AGGIUNGI POST ALL'INDICE
 // ---------------------------------------------------------
 void post_index_add(int post_id, const char *author) {
+    if (global_post_index.count > 0 && 
+        (double)global_post_index.count / global_post_index.size > MAX_CAPACITY_LOAD) {
+        post_index_resize();
+    }
+    
     unsigned long idx = hash_int(post_id, global_post_index.size);
     
     PostStateNode *node = (PostStateNode*)safe_zalloc(sizeof(PostStateNode));
@@ -426,7 +507,8 @@ void save_blockchain(Block *genesis) {
 // PERSISTENZA: CARICAMENTO SICURO (Il 3° Controllo!)
 // ---------------------------------------------------------
 Block *load_blockchain() {
-    state_init(); // Inizializza la mappa vuota
+    state_init(); 
+    post_index_init();
     
     FILE *f = fopen("wwyl_chain.dat", "rb");
     if (!f) {
@@ -559,6 +641,59 @@ int main() {
         printf("\n[STATE CHECK] Alice in RAM: Username='%s', Balance=%d\n", s_alice->username, s_alice->token_balance);
     }
 
+    // Bob pubblica post con api
+    Block *bob_content = user_post(last, &(PayloadPost){.content = "Bob's post!"}, bob_priv, bob_pub);
+    if (bob_content) {
+        print_block(bob_content);
+        last = bob_content;
+        
+        // Verifica stato post nella hashmap
+        int bob_post_id = bob_content->index;
+        PostState *ps_bob = post_index_get(bob_post_id);
+        if (ps_bob) {
+            printf("[POST CHECK] Post #%d - Author: %.10s..., Likes: %d, Dislikes: %d, Open: %d\n",
+                   ps_bob->post_id, ps_bob->author_pubkey, ps_bob->likes, ps_bob->dislikes, ps_bob->is_open);
+        }
+    }
+    
+    // Alice pubblica un secondo post per testare la hashmap
+    printf("\n--- [TEST 2.5] Alice crea un post ---\n");
+    Block *alice_content = user_post(last, &(PayloadPost){.content = "Alice's first post!"}, alice_priv, alice_pub);
+    if (alice_content) {
+        print_block(alice_content);
+        last = alice_content;
+        
+        int alice_post_id = alice_content->index;
+        PostState *ps_alice = post_index_get(alice_post_id);
+        if (ps_alice) {
+            printf("[POST CHECK] Post #%d - Author: %.10s..., Likes: %d, Dislikes: %d, Open: %d\n",
+                   ps_alice->post_id, ps_alice->author_pubkey, ps_alice->likes, ps_alice->dislikes, ps_alice->is_open);
+        }
+    }
+    
+    // Stampa statistiche hashmap
+    printf("\n[HASHMAP STATS] Total posts indexed: %d\n", global_post_index.count);
+    
+    // ---------------------------------------------------------
+    // TEST 2.7: BOB COMMENTA IL POST DI ALICE
+    // ---------------------------------------------------------
+    printf("\n--- [TEST 2.7] Bob commenta il post di Alice ---\n");
+    if (alice_content) {
+        int target_post = alice_content->index;
+        PayloadComment comment_payload;
+        comment_payload.target_post_id = target_post;
+        snprintf(comment_payload.content, sizeof(comment_payload.content), "Nice post Alice!");
+        
+        Block *bob_comment = user_comment(last, &comment_payload, bob_priv, bob_pub);
+        if (bob_comment) {
+            print_block(bob_comment);
+            last = bob_comment;
+            printf("[COMMENT CHECK] Bob successfully commented on post #%d\n", target_post);
+        } else {
+            printf("[COMMENT ERROR] Failed to create comment\n");
+        }
+    }
+    
     // ---------------------------------------------------------
     // TEST 3: ALICE SEGUE BOB (Follow)
     // ---------------------------------------------------------
@@ -601,6 +736,7 @@ int main() {
     // CHIUSURA E SALVATAGGIO
     // ---------------------------------------------------------
     save_blockchain(blockchain);
+    post_index_cleanup(); 
     state_cleanup(); // Pulisce la Hashmap
     EVP_cleanup();   // Pulisce OpenSSL
 

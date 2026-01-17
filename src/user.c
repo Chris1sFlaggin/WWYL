@@ -129,7 +129,7 @@ UserState *state_get_user(const char *wallet_address) {
 }
 
 void state_update_user(const char *wallet_address, const UserState *new_state) {
-    if ((float)world_state.count / world_state.size >= 0.75) {
+    if ((float)world_state.count / world_state.size >= MAX_CAPACITY_LOAD) {
         state_resize();
     }
 
@@ -290,11 +290,62 @@ Block *user_follow(Block *prev_block, const void *payload, const char *privkey_h
 
     Block *new_block = mine_new_block(prev_block, ACT_FOLLOW_USER, &follow_data, pubkey_hex, privkey_hex);
 
+    int is_following = state_check_follow_status(pubkey_hex, follow_data.target_user_pubkey);
     if (new_block) {
-        state_toggle_follow(pubkey_hex, follow_data.target_user_pubkey);
-        int is_following = state_check_follow_status(pubkey_hex, follow_data.target_user_pubkey);
-        printf("[FOLLOW] Success! Status: %s\n", is_following ? "FOLLOWING" : "UNFOLLOWED");
+        if (is_following) {
+            state_toggle_follow(pubkey_hex, follow_data.target_user_pubkey);
+            printf("[FOLLOW] Success! Status: UNFOLLOWED\n");
+        } else {
+            state_toggle_follow(pubkey_hex, follow_data.target_user_pubkey);
+            printf("[FOLLOW] Success! Status: FOLLOWING\n");
+        }
     }
+
+    return new_block;
+}
+
+Block *user_post(Block *prev_block, const void *payload, const char *privkey_hex, const char *pubkey_hex) {
+    if (!state_get_user(pubkey_hex)) {return NULL;}
+    
+    post_index_add(prev_block->index + 1, pubkey_hex);
+
+    const PayloadPost *input = (const PayloadPost *)payload;
+    PayloadPost post_data;
+    memset(&post_data, 0, sizeof(PayloadPost));
+
+    snprintf(post_data.content, sizeof(post_data.content), "%s", input->content);
+
+    printf("[USER] Mining post content block.\n");
+
+    Block *new_block = mine_new_block(prev_block, ACT_POST_CONTENT, &post_data, pubkey_hex, privkey_hex);
+
+    if (new_block) {
+        UserState *u = state_get_user(pubkey_hex);
+        if (u) {
+            u->total_posts += 1;
+        }
+    }
+    return new_block;
+}
+
+Block *user_comment(Block *prev_block, const void *payload, const char *privkey_hex, const char *pubkey_hex) {
+    if (!state_get_user(pubkey_hex)) {return NULL;}
+    
+    const PayloadComment *input = (const PayloadComment *)payload;
+    PayloadComment comment_data;
+    memset(&comment_data, 0, sizeof(PayloadComment));
+
+    comment_data.target_post_id = input->target_post_id;
+    snprintf(comment_data.content, sizeof(comment_data.content), "%s", input->content);
+
+    if (!post_index_exists(comment_data.target_post_id) || !post_index_author(comment_data.target_post_id)) {
+        printf("[USER] Errore: Post target per il commento non esistente.\n");
+        return NULL;
+    }
+
+    printf("[USER] Mining comment block.\n");
+
+    Block *new_block = mine_new_block(prev_block, ACT_POST_COMMENT, &comment_data, pubkey_hex, privkey_hex);
 
     return new_block;
 }

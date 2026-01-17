@@ -135,5 +135,7 @@ void post_index_add(int post_id, const char *author);
 void post_index_vote(int post_id, int vote_val); // +1 Like, -1 Dislike
 PostState *post_index_get(int post_id);
 void post_index_cleanup();
+int post_index_exists(int post_id);
+char *post_index_author(int post_id);
 
 #endif

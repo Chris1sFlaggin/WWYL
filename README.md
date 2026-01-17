@@ -97,6 +97,93 @@ OpenSSL, per standard, restituisce le firme nel formato binario ASN.1/DER. Quest
  * La Sfida: Estrarre i valori matematici puri della firma (i componenti crittografici R e S) dal blob binario DER.
  * La Soluzione: Ho implementato un flusso di decodifica manuale (d2i_ECDSA_SIG) post-firma per estrarre i Big Number R e S. Successivamente, li converto in esadecimale e applico un padding rigoroso per garantire che la firma finale sia sempre una stringa fissa di 128 caratteri (64 per R + 64 per S), essenziale per la prevedibilità della struttura dati.
 
+### Implementazione delle HashMap per la Gestione dello Stato in RAM
+
+Una blockchain pura è inefficiente per le query: leggere il balance di un utente richiederebbe di scorrere **tutti** i blocchi dalla genesi. Per risolvere questo problema, ho implementato un sistema di **State Management in RAM** basato su **Hash Tables custom** per tenere conto dei dati in tempo reale.
+
+#### Architettura delle Mappe di Stato
+
+Il sistema mantiene **due hash map separate** per ottimizzare l'accesso ai dati:
+
+1. **`StateMap`** (Mappa Utenti): Indicizza gli utenti per chiave pubblica
+2. **`PostMap`** (Mappa Post): Indicizza i post per Block ID
+
+Entrambe utilizzano la strategia di **Chaining** per gestire le collisioni.
+
+#### Gestione Dinamica della Memoria (Resize Automatico)
+
+Per mantenere basse le collisioni, la hash map si **ridimensiona automaticamente** quando il **load factor** supera il 75%:
+
+```c
+void state_resize() {
+    int old_size = world_state.size;
+    int new_size = old_size * 2;  // Raddoppio
+    
+    StateNode **new_buckets = (StateNode **)safe_zalloc(
+        new_size * sizeof(StateNode *)
+    );
+
+    // Rehashing di tutti gli elementi
+    for (int i = 0; i < old_size; i++) {
+        StateNode *curr = world_state.buckets[i];
+        while (curr != NULL) {
+            StateNode *next = curr->next;
+            unsigned long new_index = hash_djb2(
+                curr->wallet_address, new_size
+            );
+            // Inserimento in testa nel nuovo bucket
+            curr->next = new_buckets[new_index];
+            new_buckets[new_index] = curr;
+            curr = next;
+        }
+    }
+
+    free(world_state.buckets);
+    world_state.buckets = new_buckets;
+    world_state.size = new_size;
+}
+```
+
+```C
+void post_index_resize() {
+    int old_size = global_post_index.size;
+    PostStateNode **old_buckets = global_post_index.buckets;
+    
+    // Double the size
+    global_post_index.size = old_size * 2;
+    global_post_index.buckets = (PostStateNode**)safe_zalloc(global_post_index.size * sizeof(PostStateNode*));
+    global_post_index.count = 0; // Will be recounted during rehashing
+    
+    printf("[INDEX] Resizing hashmap from %d to %d buckets...\n", old_size, global_post_index.size);
+    
+    // Rehash all existing entries
+    for (int i = 0; i < old_size; i++) {
+        PostStateNode *curr = old_buckets[i];
+        while (curr) {
+            PostStateNode *next = curr->next;
+            
+            // Recalculate hash with new size
+            unsigned long new_idx = hash_int(curr->post_id, global_post_index.size);
+            
+            // Insert at new position
+            curr->next = global_post_index.buckets[new_idx];
+            global_post_index.buckets[new_idx] = curr;
+            global_post_index.count++;
+            
+            curr = next;
+        }
+    }
+    
+    // Free old bucket array (nodes were moved, not freed)
+    free(old_buckets);
+    printf("[INDEX] Resize complete. %d posts rehashed.\n", global_post_index.count);
+}
+```
+
+#### Ricostruzione dello Stato dal Ledger (Event Sourcing)
+
+All'avvio del nodo, le hash map vengono **ricostruite** scorrendo l'intera blockchain. Questo pattern è noto come **Event Sourcing** (`rebuild_state_from_chain()`)
+
 #### Creazione del blocco genesi con chiavi hardcodate da `keygen.c`
 ```c
 #include <stdio.h>
@@ -136,7 +223,7 @@ int main() {
 - [x] Serializzazione dei dati per lo storage su file.
 
 ### Fase 3: Logica di Gioco (🚧 In Corso)
-- [ ] Motore di calcolo dello Stato (Replay del Ledger in RAM).
+- [x] Motore di calcolo dello Stato (Replay del Ledger in RAM).
 - [ ] Gestione delle Streak esponenziali.
 - [ ] Implementazione del timer 24h per il Commit-Reveal.
 
