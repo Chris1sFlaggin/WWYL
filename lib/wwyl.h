@@ -9,6 +9,7 @@
 #define SIGNATURE_LEN 132   
 #define MAX_CONTENT_LEN 256 
 #define MAX_NAME_LEN 32
+#define INITIAL_POST_MAP_SIZE 128
 
 // --- TIPI DI AZIONE ---
 typedef enum {
@@ -97,5 +98,42 @@ int integrity_check(Block *prev, Block *curr);
 void serialize_block_content(const Block *block, char *buffer, size_t size);
 void save_blockchain(Block *genesis);
 Block *load_blockchain();
+
+// Stato Mutabile del Post (in RAM)
+typedef struct {
+    int post_id;
+    char author_pubkey[SIGNATURE_LEN];
+    
+    // Contatori per la Game Theory
+    int likes;
+    int dislikes;
+    
+    // Stato della scommessa
+    int is_open;       // 1 = Voting Active, 0 = Closed/Payout
+    time_t created_at;
+} PostState;
+
+// Nodo della Hashmap
+typedef struct PostStateNode {
+    int post_id; // Chiave (Intero invece di stringa!)
+    PostState state;
+    struct PostStateNode *next;
+} PostStateNode;
+
+// Hashmap specifica per i Post
+typedef struct {
+    PostStateNode **buckets;
+    int size;
+    int count;
+} PostMap;
+
+extern PostMap global_post_index;
+
+// API
+void post_index_init();
+void post_index_add(int post_id, const char *author);
+void post_index_vote(int post_id, int vote_val); // +1 Like, -1 Dislike
+PostState *post_index_get(int post_id);
+void post_index_cleanup();
 
 #endif

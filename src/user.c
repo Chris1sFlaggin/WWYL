@@ -191,6 +191,12 @@ void rebuild_state_from_chain(Block *genesis) {
         if (curr->type == ACT_FOLLOW_USER) {
             state_toggle_follow(curr->sender_pubkey, curr->data.follow.target_user_pubkey);
         }
+        if (curr->type == ACT_POST_CONTENT) {
+            post_index_add(curr->index, curr->sender_pubkey);
+        }
+        if (curr->type == ACT_VOTE_REVEAL) {
+            post_index_vote(curr->data.reveal.target_post_id, curr->data.reveal.vote_value);
+        }
         curr = curr->next;
     }
     printf("[STATE] State Rebuilt. %d users active.\n", count);

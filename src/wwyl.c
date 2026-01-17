@@ -4,6 +4,78 @@
 #include "wwyl_config.h" 
 #include "user.h"
 
+PostMap global_post_index;
+
+// ---------------------------------------------------------
+// HASHING INTERI PER MAPPE
+// ---------------------------------------------------------
+unsigned long hash_int(int key, int size) {
+    return key % size;
+}
+
+// ---------------------------------------------------------
+// INIZIALIZZAZIONE MAPPA POST
+// ---------------------------------------------------------
+void post_index_init() {
+    global_post_index.size = INITIAL_POST_MAP_SIZE;
+    global_post_index.count = 0;
+    global_post_index.buckets = (PostStateNode**)safe_zalloc(global_post_index.size * sizeof(PostStateNode*));
+}
+
+// ---------------------------------------------------------
+// AGGIUNGI POST ALL'INDICE
+// ---------------------------------------------------------
+void post_index_add(int post_id, const char *author) {
+    unsigned long idx = hash_int(post_id, global_post_index.size);
+    
+    PostStateNode *node = (PostStateNode*)safe_zalloc(sizeof(PostStateNode));
+    node->post_id = post_id;
+    
+    // Setup stato iniziale
+    node->state.post_id = post_id;
+    snprintf(node->state.author_pubkey, SIGNATURE_LEN, "%s", author);
+    node->state.likes = 0;
+    node->state.dislikes = 0;
+    node->state.is_open = 1; // Aperto alle scommesse
+    node->state.created_at = time(NULL);
+
+    // Inserimento in testa
+    node->next = global_post_index.buckets[idx];
+    global_post_index.buckets[idx] = node;
+    global_post_index.count++;
+
+    printf("[INDEX] Post #%d indicizzato. Author: %.8s...\n", post_id, author);
+}
+
+// ---------------------------------------------------------
+// OTTIENI STATO POST DALL'INDICE
+// ---------------------------------------------------------
+PostState *post_index_get(int post_id) {
+    unsigned long idx = hash_int(post_id, global_post_index.size);
+    PostStateNode *curr = global_post_index.buckets[idx];
+    
+    while (curr) {
+        if (curr->post_id == post_id) return &curr->state;
+        curr = curr->next;
+    }
+    return NULL;
+}
+
+// ---------------------------------------------------------
+// AGGIORNA VOTO POST
+// ---------------------------------------------------------
+void post_index_cleanup() {
+    for(int i=0; i<global_post_index.size; i++) {
+        PostStateNode *curr = global_post_index.buckets[i];
+        while(curr) {
+            PostStateNode *tmp = curr;
+            curr = curr->next;
+            free(tmp);
+        }
+    }
+    free(global_post_index.buckets);
+}
+
 // ---------------------------------------------------------
 // OTTIENI ID BLOCCO
 // ---------------------------------------------------------
