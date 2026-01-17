@@ -55,7 +55,7 @@ void serialize_block_content(const Block *block, char *buffer, size_t size) {
              block->type,
              payload_str);
              
-    if (len >= size) {
+    if (len < 0 || (size_t)len >= size) {
         fatal_error("Block serialization buffer overflow!");
     }
 }
@@ -80,7 +80,9 @@ Block *create_genesis_block() {
 
     // Imposto il mittente
     // Usiamo la costante hardcodata
-    memcpy(block->sender_pubkey, GOD_PUB_KEY, SIGNATURE_LEN);
+    if (snprintf(block->sender_pubkey, sizeof(block->sender_pubkey), "%s", GOD_PUB_KEY) >= (int)sizeof(block->sender_pubkey)) {
+        fprintf(stderr, "[WARN] Genesis Public Key troncata (buffer troppo piccolo)!\n");
+    }
 
     // Payload: Dato che è una REGISTRAZIONE, uso il campo Post 
     // per mettere una "Bio" o lasciarlo vuoto, a seconda di come hai definito ACT_REGISTER_USER.
@@ -166,10 +168,103 @@ void print_block(const Block *block) {
     printf("=========================\n");
 }
 
-int main() {
-    Block *blockchain = initialize_blockchain();
+Block *mine_new_block(Block *prev_block, ActionType type, const void *payload_data, const char *sender_pubkey, const char *sender_privkey) {
+    // Validazione input base
+    if (!prev_block) { fatal_error("Previous block is NULL!"); }
+    if (!payload_data && type != ACT_REGISTER_USER) { 
+        // ACT_REGISTER_USER potrebbe non avere payload se è il genesis, 
+        // ma per blocchi normali ci aspettiamo dati.
+        fatal_error("Payload data is NULL!"); 
+    }
 
-    print_block(blockchain);
+    // Allocazione
+    Block *new_block = (Block *)safe_zalloc(sizeof(Block));
+
+    // Metadati e Collegamento
+    // [MIGLIORAMENTO] L'indice è sempre quello precedente + 1
+    new_block->index = prev_block->index + 1;
+    new_block->timestamp = time(NULL);
+
+    // [SICUREZZA] snprintf al posto di strncpy per l'hash precedente
+    snprintf(new_block->prev_hash, sizeof(new_block->prev_hash), "%s", prev_block->curr_hash);
+
+    // Gestione Payload (con snprintf per sicurezza)
+    new_block->type = type;
+
+    switch (type) {
+    case ACT_POST_CONTENT:
+        snprintf(new_block->data.post.content, MAX_CONTENT_LEN, "%s", 
+                 ((PayloadPost *)payload_data)->content);
+        break;
+
+    case ACT_POST_COMMENT:
+        new_block->data.comment.target_post_id = ((PayloadComment *)payload_data)->target_post_id;
+        snprintf(new_block->data.comment.content, MAX_CONTENT_LEN, "%s", 
+                 ((PayloadComment *)payload_data)->content);
+        break;
+
+    case ACT_VOTE_COMMIT:
+        new_block->data.commit.target_post_id = ((PayloadCommit *)payload_data)->target_post_id;
+        snprintf(new_block->data.commit.vote_hash, HASH_LEN, "%s", 
+                 ((PayloadCommit *)payload_data)->vote_hash);
+        break;
+
+    case ACT_VOTE_REVEAL:
+        new_block->data.reveal.target_post_id = ((PayloadReveal *)payload_data)->target_post_id;
+        new_block->data.reveal.vote_value = ((PayloadReveal *)payload_data)->vote_value;
+        // Salt secret è fisso a 32 byte o meno? Meglio usare sizeof
+        snprintf(new_block->data.reveal.salt_secret, sizeof(new_block->data.reveal.salt_secret), "%s", 
+                 ((PayloadReveal *)payload_data)->salt_secret);
+        break;
+
+    case ACT_FOLLOW_USER:
+        snprintf(new_block->data.follow.target_user_pubkey, SIGNATURE_LEN, "%s", 
+                 ((PayloadFollow *)payload_data)->target_user_pubkey);
+        new_block->data.follow.follow_action = ((PayloadFollow *)payload_data)->follow_action;
+        break;
+        
+    default:
+        printf("[WARN] Unknown block type during mining.\n");
+        break;
+    }
+
+    // Imposto il mittente 
+    if (snprintf(new_block->sender_pubkey, sizeof(new_block->sender_pubkey), "%s", sender_pubkey) >= (int)sizeof(new_block->sender_pubkey)) {
+        fprintf(stderr, "[WARN] Sender Public Key troncata!\n");
+    }
+
+    // Mining (HASHING)
+    char raw_data_buffer[2048];
+    serialize_block_content(new_block, raw_data_buffer, sizeof(raw_data_buffer));
+    sha256_hash(raw_data_buffer, strlen(raw_data_buffer), new_block->curr_hash);
+
+    // FIRMA (Proof of Authority / Identity)
+    ecdsa_sign(sender_privkey, new_block->curr_hash, new_block->signature);
+
+    // Aggiornamento catena
+    prev_block->next = new_block;
+
+    printf("[MINED] Block #%d (Type: %d) mined by %.10s...\n", new_block->index, new_block->type, new_block->sender_pubkey);
+    return new_block;
+}
+
+int getBlockId(Block block) {
+    return block.index;
+}
+
+int main() {
+    Block *zero = initialize_blockchain();
+
+    print_block(zero);
+
+    Block *blockchain_1 = mine_new_block(zero, ACT_POST_CONTENT, &(PayloadPost){ .content = "Hello WWYL!" }, GOD_PUB_KEY, GOD_PRIV_KEY);
+    print_block(zero);
+    print_block(blockchain_1);
+
+    Block *blockchain_2 = mine_new_block(blockchain_1, ACT_POST_COMMENT, &(PayloadComment){.target_post_id = getBlockId(*blockchain_1), .content = "posttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttBel post!"}, GOD_PUB_KEY, GOD_PRIV_KEY);
+    print_block(zero);
+    print_block(blockchain_1);
+    print_block(blockchain_2);
 
     EVP_cleanup();
 

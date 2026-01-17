@@ -13,7 +13,7 @@ SRC_DIR = src
 # -Wall -Wextra: Attiva tutti i warning (fondamentale per C sicuro)
 # -std=c11: Usa lo standard C11
 # -O2: Ottimizzazione livello 2 (necessaria per _FORTIFY_SOURCE)
-CFLAGS = -I$(INC_DIR) -Wall -Wextra -std=c11 -O2
+CFLAGS = -I$(INC_DIR) -Wall -Wextra -std=c11 -O2 -Wl,-z,relro,-z,now -s
 
 # --- 2. Security Hardening Flags (IL FLEX PER LA TESI) ---
 # -fstack-protector-all: Attiva i 'Canaries' nello stack per prevenire buffer overflow

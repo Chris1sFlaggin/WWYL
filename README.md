@@ -131,7 +131,7 @@ int main() {
 
 ### Fase 2: Il Ledger Core (🚧 In Corso)
 - [x] Implementazione del Blocco Genesi.
-- [ ] Logica di concatenazione blocchi (Hash Chain).
+- [x] Logica di concatenazione blocchi (Hash Chain).
 - [ ] Validazione dell'integrità della catena.
 - [x] Serializzazione dei dati per lo storage su file.
 
