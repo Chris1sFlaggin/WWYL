@@ -64,25 +64,25 @@ void serialize_block_content(const Block *block, char *buffer, size_t size) {
 // CREAZIONE DEL BLOCCO GENESI (Crypto-Enabled)
 // ---------------------------------------------------------
 Block *create_genesis_block() {
-    // 1. Allocazione
+    // Allocazione
     Block *block = (Block *)safe_zalloc(sizeof(Block));
 
-    // 2. Metadati
+    // Metadati
     block->index = 0;
     block->timestamp = time(NULL); // O metti un timestamp fisso se vuoi che l'hash sia eterno
     
-    // 3. AZIONE: REGISTRAZIONE UTENTE (Il tuo profilo)
+    // AZIONE: REGISTRAZIONE UTENTE (Il tuo profilo)
     block->type = ACT_REGISTER_USER;
 
     // Prev Hash a zero
     memset(block->prev_hash, '0', 64);
     block->prev_hash[64] = '\0';
 
-    // 4. Impostiamo il mittente (TU)
+    // Imposto il mittente
     // Usiamo la costante hardcodata
     memcpy(block->sender_pubkey, GOD_PUB_KEY, SIGNATURE_LEN);
 
-    // 5. Payload: Dato che è una REGISTRAZIONE, usiamo il campo Post 
+    // Payload: Dato che è una REGISTRAZIONE, uso il campo Post 
     // per mettere una "Bio" o lasciarlo vuoto, a seconda di come hai definito ACT_REGISTER_USER.
     // Assumiamo che per la registrazione usiamo il payload per un messaggio di benvenuto o bio.
     const char *my_bio = "@Chris1sflaggin - Hello from the founder of WWYL!";
@@ -91,16 +91,15 @@ Block *create_genesis_block() {
         fprintf(stderr, "[WARN] Bio troncata.\n");
     }
 
-    // 6. Serializzazione & Hashing
+    // Serializzazione & Hashing
     char raw_data_buffer[2048];
     serialize_block_content(block, raw_data_buffer, sizeof(raw_data_buffer));
     
     // Calcola Hash del blocco (Questo sarà l'ID del blocco 0)
     sha256_hash(raw_data_buffer, strlen(raw_data_buffer), block->curr_hash);
 
-    // 7. FIRMA DIGITALE (Proof of Authority)
-    // Firmiamo il blocco con la TUA chiave privata hardcodata.
-    // Questo dimostra matematicamente che TU hai creato questo blocco.
+    // FIRMA DIGITALE (Proof of Authority)
+    // Firmo il blocco con la mia chiave privata hardcodata.
     ecdsa_sign(GOD_PRIV_KEY, block->curr_hash, block->signature);
 
     printf("[GENESIS] Profile Created for: %.16s...\n", block->sender_pubkey);
