@@ -19,7 +19,7 @@ In un'era digitale dominata da bot, fake news e like inflazionati, il valore del
 * Se il post sopravvive alla critica (Like > Dislike): Entri in una streak in cui guadagni sempre più token.
 * Se il post viene rifiutato: Perdi la scommessa e la tua puntata viene distribuita a chi ti ha criticato.
 
-Il sistema utilizza la crittografia per rendere **matematicamente svantaggioso mentire**.
+Il sistema utilizza la crittografia per rendere **economicamente svantaggioso mentire**.
 
 ## 🛠 Architettura Tecnica
 Questo progetto non è un semplice social. È una **Blockchain Custom scritta da zero in C**.
