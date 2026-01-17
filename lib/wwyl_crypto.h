@@ -7,8 +7,6 @@
 #include <openssl/ec.h>
 #include <openssl/err.h>  
 #include <openssl/pem.h>  
-#include <string.h>
-#include <stdio.h>
 
 #define SHA256_DIGEST_LENGTH 32
 

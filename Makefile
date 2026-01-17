@@ -29,7 +29,7 @@ LIBS = -lssl -lcrypto
 # --- 4. Target Files ---
 # Main Node
 TARGET = wwyl_node
-SRCS = $(SRC_DIR)/wwyl.c $(SRC_DIR)/utils.c $(SRC_DIR)/wwyl_crypto.c
+SRCS = $(SRC_DIR)/wwyl.c $(SRC_DIR)/utils.c $(SRC_DIR)/wwyl_crypto.c $(SRC_DIR)/user.c
 
 DATA = wwyl_chain.dat
 

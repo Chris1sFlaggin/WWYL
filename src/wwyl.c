@@ -2,6 +2,7 @@
 #include "utils.h"
 #include "wwyl_crypto.h"
 #include "wwyl_config.h" 
+#include "user.h"
 
 // ---------------------------------------------------------
 // OTTIENI ID BLOCCO
@@ -38,7 +39,10 @@ void serialize_block_content(const Block *block, char *buffer, size_t size) {
             snprintf(payload_str, sizeof(payload_str), "%s", block->data.post.content);
             break;
         case ACT_REGISTER_USER:
-            snprintf(payload_str, sizeof(payload_str), "REGISTRATION");
+            snprintf(payload_str, sizeof(payload_str), "%s:%s:%s", 
+                     block->data.registration.username, 
+                     block->data.registration.bio,
+                     block->data.registration.pic_url);
             break;
         case ACT_POST_COMMENT:
             snprintf(payload_str, sizeof(payload_str), "%d:%s",
@@ -155,7 +159,10 @@ void print_block(const Block *block) {
     printf("# Current Hash: %s\n", block->curr_hash);
     switch (block->type) {
         case ACT_REGISTER_USER:
-            printf("# User Registration\n");
+            printf("# Registration : %s: %s: %s\n", 
+            block->data.registration.username, 
+            block->data.registration.bio,
+            block->data.registration.pic_url);
             break;
         case ACT_POST_CONTENT:
             printf("# Post Content: %s\n", block->data.post.content);
@@ -241,6 +248,13 @@ Block *mine_new_block(Block *prev_block, ActionType type, const void *payload_da
         snprintf(new_block->data.follow.target_user_pubkey, SIGNATURE_LEN, "%s", 
                  ((PayloadFollow *)payload_data)->target_user_pubkey);
         new_block->data.follow.follow_action = ((PayloadFollow *)payload_data)->follow_action;
+        break;
+
+    case ACT_REGISTER_USER:
+        snprintf(new_block->data.registration.username, 32, "%s", 
+                 ((PayloadRegister *)payload_data)->username);
+        snprintf(new_block->data.registration.bio, 64, "%s", 
+                 ((PayloadRegister *)payload_data)->bio);
         break;
         
     default:
@@ -388,20 +402,19 @@ Block *load_blockchain() {
 }
 
 int main() {
-    // 1. Invece di initialize_blockchain(), usiamo load_blockchain()
+    // Invece di initialize_blockchain(), usiamo load_blockchain()
     //    che gestisce sia il caricamento che la creazione se vuoto.
     Block *blockchain = load_blockchain();
 
-    // Troviamo l'ultimo blocco per minare in coda
+    // Troviamo l'ultimo blocco
     Block *last = blockchain;
     while (last->next != NULL) {
         last = last->next;
     }
 
     printf("\n--- NODO AVVIATO ---\n");
-    print_block(last); // Vediamo dove siamo rimasti
+    print_block(last); 
 
-    // 2. Aggiungiamo un nuovo blocco (così testiamo che la catena cresce)
     printf("\n[ACTION] Aggiungo un nuovo post...\n");
     Block *new_b = mine_new_block(last, ACT_POST_CONTENT, 
                                  &(PayloadPost){ .content = "Persistence check!" }, 
@@ -411,7 +424,16 @@ int main() {
         print_block(new_b);
     }
 
-    // 3. Salviamo tutto prima di uscire
+    Block *user_block = register_user(
+        blockchain, 
+        &(PayloadRegister){ 
+            .username = "Chris", 
+            .bio = "Dev della blockchain", 
+            .pic_url = "https://imgur.com/avatar.png" 
+        }, 
+        GOD_PRIV_KEY, 
+        GOD_PUB_KEY
+    );
     save_blockchain(blockchain);
 
     EVP_cleanup();

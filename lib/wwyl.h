@@ -21,6 +21,11 @@ typedef enum {
 } ActionType;
 
 // --- STRUTTURE PAYLOAD (I dati specifici per ogni azione) ---
+typedef struct {
+    char username[32]; // Max 32 caratteri per il nome
+    char bio[64];      // Max 64 caratteri per la bio
+    char pic_url[128];// URL dell'avatar
+} PayloadRegister;
 
 // Payload per quando posti qualcosa
 typedef struct {
@@ -72,7 +77,7 @@ typedef struct Block {
         PayloadReveal reveal;
         PayloadComment comment;
         PayloadFollow follow;
-        // User registration non serve payload, basta la sender_pubkey
+        PayloadRegister registration;
     } data;
 
     struct Block *next; // Per la lista concatenata in memoria RAM
