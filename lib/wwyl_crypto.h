@@ -5,6 +5,8 @@
 #include <openssl/core_names.h>
 #include <openssl/param_build.h>
 #include <openssl/ec.h>
+#include <openssl/err.h>  
+#include <openssl/pem.h>  
 #include <string.h>
 #include <stdio.h>
 

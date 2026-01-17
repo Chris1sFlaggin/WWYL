@@ -19,7 +19,7 @@ void handle_openssl_error() {
     abort();
 }
 
-// 1. Hashing SHA256 (Moderno con EVP)
+// Hashing SHA256 (Moderno con EVP)
 void sha256_hash(const char *input, size_t len, char *output_hex) {
     EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
     unsigned char hash[EVP_MAX_MD_SIZE];
@@ -80,7 +80,7 @@ EVP_PKEY* get_pkey_from_hex(const char *priv_hex, const char *pub_hex) {
     return pkey;
 }
 
-// 2. Generazione Keypair (OpenSSL 3.0 Way)
+// Generazione Keypair (OpenSSL 3.0 Way)
 void generate_keypair(char *priv_hex_out, char *pub_hex_out) {
     // Generazione facile in una riga (Feature di OpenSSL 3.0)
     EVP_PKEY *pkey = EVP_PKEY_Q_keygen(NULL, NULL, "EC", "secp256k1");
@@ -112,7 +112,7 @@ void generate_keypair(char *priv_hex_out, char *pub_hex_out) {
     EVP_PKEY_free(pkey);
 }
 
-// 3. Firma ECDSA (EVP Interface)
+// Firma ECDSA (EVP Interface)
 void ecdsa_sign(const char *private_key_hex, const char *message, char *signature_hex) {
     EVP_PKEY *pkey = get_pkey_from_hex(private_key_hex, NULL);
     if (!pkey) handle_openssl_error();
@@ -153,7 +153,7 @@ void ecdsa_sign(const char *private_key_hex, const char *message, char *signatur
     EVP_PKEY_free(pkey);
 }
 
-// 4. Verifica ECDSA
+// Verifica ECDSA
 void ecdsa_verify(const char *public_key_hex, const char *message, const char *signature_hex, int *is_valid) {
     EVP_PKEY *pkey = get_pkey_from_hex(NULL, public_key_hex);
     if (!pkey) { *is_valid = 0; return; }

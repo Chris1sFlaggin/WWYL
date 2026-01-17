@@ -132,7 +132,6 @@ void print_block(const Block *block) {
     printf("# Signature: %s\n", block->signature);
     printf("# Previous Hash: %s\n", block->prev_hash);
     printf("# Current Hash: %s\n", block->curr_hash);
-    printf("# Sender PubKey: %s\n", block->sender_pubkey);
     switch (block->type) {
         case ACT_REGISTER_USER:
             printf("# User Registration\n");
@@ -168,3 +167,12 @@ void print_block(const Block *block) {
     printf("=========================\n");
 }
 
+int main() {
+    Block *blockchain = initialize_blockchain();
+
+    print_block(blockchain);
+
+    EVP_cleanup();
+
+    return 0;   
+}
