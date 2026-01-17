@@ -39,51 +39,6 @@ La scelta dell'algoritmo è ricaduta su ECDSA (Elliptic Curve Digital Signature 
 Il Flusso di Firma del Blocco (Block Signing Flow)
 La sfida principale in una blockchain C non è solo firmare, ma garantire che ciò che viene firmato sia identico per ogni nodo della rete. Un solo byte di differenza (come il padding di una struct) cambierebbe l'hash e invaliderebbe la firma.
 Ho implementato un processo di Serializzazione Deterministica e un flusso di firma a più stadi per garantire la consistenza.
-%%
-    A[Struct Block in RAM] -->|Serializzazione Deterministica| B(Raw String Buffer);
-    B -->|SHA-256 Hashing| C(Digest Hash 32-byte);
-    C -->|Input per Firma| D{OpenSSL EVP Signing};
-    Key[PrivateKey secp256k1] --> D;
-    D -->|Output| E(Firma DER ASN.1 Binaria);
-    E -->|Decodifica & Estrazione| F[Valori R e S grezzi];
-    F -->|Padding Hex a 64 byte| G[Stringa Firma Finale 128-char];
-    G -->|Inserimento| H[Block struct field: signature];
-
-    style B fill:#f9f,stroke:#333,stroke-width:2px,color:black
-    style E fill:#ff9,stroke:#333,stroke-width:2px,color:black
-    style G fill:#9f9,stroke:#333,stroke-width:2px,color:black
-
-Visualizzazione ASCII del Flusso Dati
-[ STRUCT BLOCK (RAM) ]
-+--------------------+
-| Index: 0           |
-| Time:  1735689600  |  
-| Type:  POST (1)    |
-| Prev:  0000...00   |
-| Sender: 045A...B2  |
-| Payload: "Hello"   |
-+---------+----------+
-          |
-          v
-   [ 1. SERIALIZZAZIONE DETERMINISTICA ]
-   "0:1735689600:0000...00:045A...B2:1:Hello"
-          |
-          | (SHA-256)
-          v
-   [ 2. HASH DIGEST (32 bytes) ] 
-   [ a8fd3c...9z ]
-          |
-          | (Firma ECDSA con PrivateKey via EVP)
-          v
-   [ 3. FIRMA DER BINARIA (Variabile ~70 bytes) ]
-   [ 0x30 0x44 0x02 0x20 (R...) 0x02 0x20 (S...) ] <--- Formato ASN.1 complesso
-          |
-          | (Decodifica, Estrazione R/S, Hex Padding)
-          v
-   [ 4. FIRMA FINALE HEX (Fissa 128 chars) ]
-   R: [7c3b...0a] (64 chars)
-   S: [1f9d...4b] (64 chars)
-   --> "7c3b...0a1f9d...4b"
 
 #### Sfide Implementative
 Durante lo sviluppo del core crittografico, ho affrontato due sfide tecniche principali che distinguono questa implementazione da esempi didattici standard.
