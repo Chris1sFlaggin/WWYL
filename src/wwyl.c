@@ -61,7 +61,7 @@ void serialize_block_content(const Block *block, char *buffer, size_t size) {
                      block->data.reveal.salt_secret);
             break;
         case ACT_FOLLOW_USER:
-            snprintf(payload_str, sizeof(payload_str), "%s:%d",
+            snprintf(payload_str, sizeof(payload_str), "%s",
                      block->data.follow.target_user_pubkey);
             break;
         default:
@@ -354,10 +354,14 @@ void save_blockchain(Block *genesis) {
 // PERSISTENZA: CARICAMENTO SICURO (Il 3° Controllo!)
 // ---------------------------------------------------------
 Block *load_blockchain() {
-    FILE *f = fopen("wwyl_chain.dat", "rb"); // Read Binary
+    state_init(); // Inizializza la mappa vuota
+    
+    FILE *f = fopen("wwyl_chain.dat", "rb");
     if (!f) {
-        printf("[INFO] Nessuna blockchain trovata su disco. Creazione Genesi...\n");
-        return initialize_blockchain(); // Se non c'è file, partiamo da zero
+        printf("[INFO] Nessuna chain. Creo Genesi...\n");
+        Block *gen = initialize_blockchain();
+        rebuild_state_from_chain(gen); 
+        return gen;
     }
 
     printf("[DISK] Loading blockchain from file...\n");
@@ -395,52 +399,74 @@ Block *load_blockchain() {
         fatal_error("CORRUPTED CHAIN DETECTED ON DISK! REFUSING TO START.");
     }
 
+    rebuild_state_from_chain(root);
+
     return root;
 }
 
 int main() {
+    // Prima pulisci il vecchio DB: rm wwyl_chain.dat
     Block *blockchain = load_blockchain();
 
-    // Troviamo l'ultimo blocco
     Block *last = blockchain;
     while (last->next != NULL) {
         last = last->next;
     }
 
     printf("\n--- NODO AVVIATO ---\n");
-    print_block(last); 
+    printf("[INFO] Ultimo blocco: #%d\n", last->index);
 
-    printf("\n[ACTION] Aggiungo un nuovo post...\n");
-    Block *new_b = mine_new_block(last, ACT_POST_CONTENT, 
-                                 &(PayloadPost){ .content = "Persistence check!" }, 
-                                 GOD_PUB_KEY, GOD_PRIV_KEY);
-    
-    if (new_b) {
-        print_block(new_b);
-        last = new_b; 
+    // TEST ALICE
+    printf("\n--- [TEST 1] Creazione Utente ALICE ---\n");
+    char alice_priv[SIGNATURE_LEN], alice_pub[SIGNATURE_LEN]; 
+    generate_keypair(alice_priv, alice_pub);
+
+    Block *b_alice = register_user(last, 
+        &(PayloadRegister){.username="Alice", .bio="Crypto Fan", .pic_url="img/alice.png"}, 
+        alice_priv, alice_pub);
+
+    if (b_alice) {
+        print_block(b_alice);
+        last = b_alice; 
     }
 
-    char my_priv[128];
-    char my_pub[256];
-    generate_keypair(my_priv, my_pub); 
+    // TEST BOB
+    printf("\n--- [TEST 2] Creazione Utente BOB ---\n");
+    char bob_priv[SIGNATURE_LEN], bob_pub[SIGNATURE_LEN];
+    generate_keypair(bob_priv, bob_pub);
 
-    printf("Nuove chiavi generate!\nPriv: %s\nPub: %s\n", my_priv, my_pub);
+    Block *b_bob = register_user(last, 
+        &(PayloadRegister){.username="Bob", .bio="Builder", .pic_url="img/bob.png"}, 
+        bob_priv, bob_pub);
 
-    Block *reg_block = register_user(
-        last, 
-        &(PayloadRegister){.username="NuovoUser"}, 
-        my_priv,
-        my_pub
-    );
-
-    if (reg_block) {
-        printf("[SUCCESS] Utente registrato nel blocco #%d\n", reg_block->index);
-        print_block(reg_block); 
-        last = reg_block;       
+    if (b_bob) {
+        print_block(b_bob);
+        last = b_bob;
     }
-    
+
+    // VERIFICA CHE I DATI SIANO NELLO STATO
+    UserState *s_alice = state_get_user(alice_pub);
+    if (s_alice) {
+        printf("\n[CHECK STATE] Alice trovata in memoria: Username='%s', Bio='%s'\n", s_alice->username, s_alice->bio);
+    }
+
+    // TEST FOLLOW
+    printf("\n--- [TEST 3] Alice segue Bob ---\n");
+    PayloadFollow follow_payload;
+    memset(&follow_payload, 0, sizeof(PayloadFollow));
+    snprintf(follow_payload.target_user_pubkey, sizeof(follow_payload.target_user_pubkey), "%s", bob_pub);
+
+    Block *b_follow = user_follow(last, &follow_payload, alice_priv, alice_pub);
+    if (b_follow) {
+        print_block(b_follow);
+        last = b_follow;
+    }
+
+    UserState *s_bob = state_get_user(bob_pub);
+    printf("[CHECK] Bob Followers: %d\n", s_bob ? s_bob->followers_count : -1);
+
     save_blockchain(blockchain);
-
+    state_cleanup();
     EVP_cleanup();
     return 0;   
 }

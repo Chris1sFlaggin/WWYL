@@ -4,36 +4,54 @@
 #include "wwyl.h"
 #include "utils.h"
 #include "wwyl_crypto.h"
-#include "hashmap.h"
 
+// Configurazione Hashmap
+#define STATE_MAP_SIZE 1024 
+#define INITIAL_MAP_SIZE 16 
+#define REL_MAP_SIZE 2048
+#define WELCOME_BONUS 10
+
+// --- PROTOTIPI FUNZIONI UTENTE ---
+
+// Corretto: Rimosso 'genesis', aggiunto 'user_follow'
 Block *register_user(Block *prev_block, const void *payload, const char *privkey_hex, const char *pubkey_hex);
-int user_login(Block *genesis, const char *privkey_hex, const char *pubkey_hex);
+int user_login(const char *privkey_hex, const char *pubkey_hex);
+Block *user_follow(Block *prev_block, const void *payload, const char *privkey_hex, const char *pubkey_hex);
 
-// --- STRUTTURA STATO UTENTE (IN MEMORIA) ---
-typedef struct {
+
+// --- STRUTTURE STATE MANAGEMENT ---
+
+// Nodo della Hashmap (Bucket Chain)
+typedef struct StateNode {
     char wallet_address[SIGNATURE_LEN];
-    int token_balance;
-    int best_streak;
-    int current_streak;
+    UserState state;
+    struct StateNode *next;
+} StateNode;
 
-    int followers_count;
-    int following_count;
-    int total_posts;
-} UserState;
+// Struttura della Hashmap Dinamica
+typedef struct {
+    StateNode **buckets; // Array di puntatori ai nodi
+    int size;            // Numero attuale di bucket (Capacity)
+    int count;           // Numero di elementi inseriti (Load)
+} StateMap;
 
-// Inizializza la HashMap globale degli stati utente
-void user_state_init(void);
+// Nodo per tracciare le relazioni (Follow)
+typedef struct RelationNode {
+    char key[SIGNATURE_LEN * 2]; // "FollowerPubKey:TargetPubKey"
+    struct RelationNode *next;
+} RelationNode;
 
-// Ottiene lo stato di un utente (crea se non esiste)
-UserState* user_state_get(const char *wallet_address);
+// Variabile Globale
+extern StateMap world_state;
 
-// Aggiorna lo stato di un utente nella HashMap
-void user_state_update(const char *wallet_address, UserState *state);
-
-// Libera tutta la memoria della HashMap
-void user_state_destroy(void);
-
-// Stampa lo stato di un utente (debug)
-void print_user_state(const UserState *state);
+// --- API STATE MANAGEMENT ---
+void state_init();
+UserState *state_get_user(const char *wallet_address);
+void state_update_user(const char *wallet_address, const UserState *new_state);
+void state_add_new_user(const char *wallet_address, const char *username, const char *bio, const char *pic);
+void rebuild_state_from_chain(Block *genesis);
+void state_cleanup();
+int state_check_follow_status(const char *follower, const char *target);
+void state_toggle_follow(const char *follower, const char *target);
 
 #endif

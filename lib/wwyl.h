@@ -5,71 +5,62 @@
 #include <time.h>
 
 // --- COSTANTI DI SICUREZZA ---
-#define HASH_LEN 65         // SHA256 hex string + null terminator
-#define SIGNATURE_LEN 132   // Firma ECDSA hex
-#define MAX_CONTENT_LEN 256 // Limite tweet
+#define HASH_LEN 65         
+#define SIGNATURE_LEN 132   
+#define MAX_CONTENT_LEN 256 
 #define MAX_NAME_LEN 32
 
-// --- TIPI DI AZIONE (LOGICA COMMIT-REVEAL) ---
+// --- TIPI DI AZIONE ---
 typedef enum {
-    ACT_REGISTER_USER = 0, // Creazione identità sulla chain
-    ACT_POST_CONTENT = 1,  // Creazione Post
-    ACT_POST_COMMENT = 2,  // Creazione Commento 
-    ACT_VOTE_COMMIT = 3,   // Fase 1: Voto segreto (Hash) 
-    ACT_VOTE_REVEAL = 4,    // Fase 2: Voto palese (Like/Dislike + Salt) 
-    ACT_FOLLOW_USER = 5    // Segui un altro utente
+    ACT_REGISTER_USER = 0, 
+    ACT_POST_CONTENT = 1,  
+    ACT_POST_COMMENT = 2,  
+    ACT_VOTE_COMMIT = 3,   
+    ACT_VOTE_REVEAL = 4,   
+    ACT_FOLLOW_USER = 5    
 } ActionType;
 
-// --- STRUTTURE PAYLOAD (I dati specifici per ogni azione) ---
+// --- STRUTTURE PAYLOAD ---
 typedef struct {
-    char username[32]; // Max 32 caratteri per il nome
-    char bio[64];      // Max 64 caratteri per la bio
-    char pic_url[128];// URL dell'avatar
+    char username[32]; 
+    char bio[64];      
+    char pic_url[128]; 
 } PayloadRegister;
 
-// Payload per quando posti qualcosa
 typedef struct {
     char content[MAX_CONTENT_LEN];
 } PayloadPost;
 
-// Payload per quando ti impegni a votare (segreto)
 typedef struct {
-    int target_post_id;       // ID del post che stai votando
-    char vote_hash[HASH_LEN]; // Hash(VOTO + SALT)
+    int target_post_id;       
+    char vote_hash[HASH_LEN]; 
 } PayloadCommit;
 
-// Payload per quando sveli il voto
 typedef struct {
     int target_post_id;
-    int vote_value;           // 1 = Like, -1 = Dislike
-    char salt_secret[32];     // Il segreto usato per generare l'hash
+    int vote_value;           
+    char salt_secret[32];     
 } PayloadReveal;
 
 typedef struct {
-    int target_post_id;            // ID del post che stai commentando
-    char content[MAX_CONTENT_LEN]; // Contenuto del commento
+    int target_post_id;            
+    char content[MAX_CONTENT_LEN]; 
 } PayloadComment;
 
 typedef struct {
-    char target_user_pubkey[SIGNATURE_LEN]; // La chiave pubblica dell'utente da seguire
+    char target_user_pubkey[SIGNATURE_LEN]; 
 } PayloadFollow;
 
-// --- STRUTTURA BLOCCO / TRANSAZIONE (BLOCKCHAIN) ---
-// In questo modello "1 Azione = 1 Blocco" per semplicità
+// --- STRUTTURA BLOCCO ---
 typedef struct Block {
-    int index;                // ID progressivo del blocco
+    int index;                
     time_t timestamp;
-    
-    // Header Blockchain (Sicurezza Integrità)
-    char prev_hash[HASH_LEN]; // Hash del blocco precedente (La Catena!)
-    char curr_hash[HASH_LEN]; // Hash di questo blocco
-    
-    // Dati Transazione
+    char prev_hash[HASH_LEN]; 
+    char curr_hash[HASH_LEN]; 
     ActionType type;
-    char sender_pubkey[SIGNATURE_LEN]; // Chi sta agendo (Wallet Address)
-    char signature[SIGNATURE_LEN]; // Firma digitale dell'autore (Autenticazione)
+    char sender_pubkey[SIGNATURE_LEN]; 
+    char signature[SIGNATURE_LEN]; 
     
-    // Unione: Un blocco può contenere SOLO UNO di questi payload
     union {
         PayloadPost post;
         PayloadCommit commit;
@@ -79,13 +70,32 @@ typedef struct Block {
         PayloadRegister registration;
     } data;
 
-    struct Block *next; // Per la lista concatenata in memoria RAM
+    struct Block *next; 
 } Block;
 
-// === AGGIUNGI QUESTI PROTOTIPI ===
+// --- STRUTTURA STATO UTENTE (Aggiornata!) ---
+typedef struct {
+    char wallet_address[SIGNATURE_LEN];
+    // NUOVI CAMPI AGGIUNTI
+    char username[32];
+    char bio[64];
+    char pic_url[128];
+
+    int token_balance;
+    int best_streak;
+    int current_streak;
+    int followers_count;
+    int following_count;
+    int total_posts;
+} UserState;
+
+// === PROTOTIPI ===
 Block* initialize_blockchain(void);
 void print_block(const Block *block);
 Block *mine_new_block(Block *prev_block, ActionType type, const void *payload_data, const char *sender_pubkey, const char *sender_privkey);
 int integrity_check(Block *prev, Block *curr); 
+void serialize_block_content(const Block *block, char *buffer, size_t size);
+void save_blockchain(Block *genesis);
+Block *load_blockchain();
 
 #endif
