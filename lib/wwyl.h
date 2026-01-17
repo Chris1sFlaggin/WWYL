@@ -6,8 +6,7 @@
 
 // --- COSTANTI DI SICUREZZA ---
 #define HASH_LEN 65         // SHA256 hex string + null terminator
-#define ADDR_LEN 131        // Ethereum-style address + null
-#define SIGNATURE_LEN 129   // Firma ECDSA hex
+#define SIGNATURE_LEN 130   // Firma ECDSA hex
 #define MAX_CONTENT_LEN 256 // Limite tweet
 #define MAX_NAME_LEN 32
 
@@ -47,7 +46,7 @@ typedef struct {
 } PayloadComment;
 
 typedef struct {
-    char target_user_pubkey[ADDR_LEN]; // La chiave pubblica dell'utente da seguire
+    char target_user_pubkey[SIGNATURE_LEN]; // La chiave pubblica dell'utente da seguire
     int follow_action;               // 1 = Segui, -1 = Smetti di seguire
 } PayloadFollow;
 
@@ -63,7 +62,7 @@ typedef struct Block {
     
     // Dati Transazione
     ActionType type;
-    char sender_pubkey[ADDR_LEN]; // Chi sta agendo (Wallet Address)
+    char sender_pubkey[SIGNATURE_LEN]; // Chi sta agendo (Wallet Address)
     char signature[SIGNATURE_LEN]; // Firma digitale dell'autore (Autenticazione)
     
     // Unione: Un blocco può contenere SOLO UNO di questi payload
@@ -82,7 +81,7 @@ typedef struct Block {
 // --- STRUTTURA STATO UTENTE (IN MEMORIA) ---
 // Questo non va su disco/blockchain, è calcolato leggendo i blocchi
 typedef struct {
-    char wallet_address[ADDR_LEN];
+    char wallet_address[SIGNATURE_LEN];
     int token_balance;
     int best_streak;
     int current_streak;
@@ -91,5 +90,8 @@ typedef struct {
     int following_count;
     int total_posts;
 } UserState;
+
+Block* initialize_blockchain(void);
+void print_block(const Block *block);
 
 #endif

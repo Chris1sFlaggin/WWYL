@@ -1,134 +1,193 @@
 #include "wwyl_crypto.h"
+#include <openssl/err.h>
+#include <openssl/pem.h>
 
-// --- HELPER PRIVATO: Padding degli Hex ---
-// Serve per garantire che le stringhe hex siano lunghe esattamente 64 caratteri (32 byte)
-// Riempiendo di '0' a sinistra se il numero è piccolo.
+// --- HELPER: Padding Hex (Invariato) ---
 void pad_hex(const char* input_hex, char* output_fixed_64) {
     int len = strlen(input_hex);
     int padding = 64 - len;
-    
-    if (padding < 0) { 
-        // Caso raro: numero più grande di 256 bit (non dovrebbe succedere con secp256k1)
+    if (padding < 0) {
         strncpy(output_fixed_64, input_hex, 64);
     } else {
-        // Aggiungi zeri
         for (int i = 0; i < padding; i++) output_fixed_64[i] = '0';
-        // Copia il numero
         strcpy(output_fixed_64 + padding, input_hex);
     }
     output_fixed_64[64] = '\0';
 }
 
-// 1. Hashing SHA256 Sicuro
+// --- HELPER: Gestione Errori OpenSSL ---
+void handle_openssl_error() {
+    ERR_print_errors_fp(stderr);
+    abort();
+}
+
+// 1. Hashing SHA256 (Moderno con EVP)
 void sha256_hash(const char *input, size_t len, char *output_hex) {
-    unsigned char hash[SHA256_DIGEST_LENGTH];
-    SHA256((unsigned char*)input, len, hash);
-    
-    for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+    EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
+    unsigned char hash[EVP_MAX_MD_SIZE];
+    unsigned int hash_len;
+
+    if(!mdctx) handle_openssl_error();
+
+    EVP_DigestInit_ex(mdctx, EVP_sha256(), NULL);
+    EVP_DigestUpdate(mdctx, input, len);
+    EVP_DigestFinal_ex(mdctx, hash, &hash_len);
+    EVP_MD_CTX_free(mdctx);
+
+    for(unsigned int i = 0; i < hash_len; i++) {
         sprintf(output_hex + (i * 2), "%02x", hash[i]);
     }
-    output_hex[64] = '\0'; 
+    output_hex[hash_len * 2] = '\0';
 }
 
-// 2. Firma ECDSA (Gestione corretta della memoria e del padding)
-void ecdsa_sign(const char *private_key_hex, const char *message, char *signature_hex) {
-    EC_KEY *key = EC_KEY_new_by_curve_name(NID_secp256k1);
-    
-    // Converti Hex PrivKey -> BIGNUM
-    BIGNUM *priv_bn = NULL;
-    BN_hex2bn(&priv_bn, private_key_hex);
-    EC_KEY_set_private_key(key, priv_bn);
+// --- HELPER: Costruzione Chiave da Hex (La parte difficile di OpenSSL 3.0) ---
+// Converte la stringa Hex in un oggetto EVP_PKEY usabile
+EVP_PKEY* get_pkey_from_hex(const char *priv_hex, const char *pub_hex) {
+    EVP_PKEY_CTX *pctx = EVP_PKEY_CTX_new_from_name(NULL, "EC", NULL);
+    EVP_PKEY *pkey = NULL;
+    OSSL_PARAM_BLD *bld = OSSL_PARAM_BLD_new();
+    OSSL_PARAM *params = NULL;
+    BIGNUM *bn_priv = NULL;
+    unsigned char *pub_bytes = NULL;
 
-    // Hashing del messaggio
-    unsigned char hash[SHA256_DIGEST_LENGTH];
-    SHA256((unsigned char*)message, strlen(message), hash);
+    OSSL_PARAM_BLD_push_utf8_string(bld, "group", "secp256k1", 0);
 
-    // Firma
-    ECDSA_SIG *sig = ECDSA_do_sign(hash, SHA256_DIGEST_LENGTH, key);
-    if (sig == NULL) {
-        fprintf(stderr, "[CRYPTO ERROR] Firma fallita\n");
-        return;
+    if (priv_hex) {
+        BN_hex2bn(&bn_priv, priv_hex);
+        OSSL_PARAM_BLD_push_BN(bld, "priv", bn_priv);
     }
 
-    const BIGNUM *r, *s;
-    ECDSA_SIG_get0(sig, &r, &s);
+    if (pub_hex) {
+        // La chiave pubblica in hex deve essere convertita in octet string
+        long pub_len = strlen(pub_hex) / 2;
+        pub_bytes = OPENSSL_malloc(pub_len);
+        for (long i = 0; i < pub_len; i++) {
+            sscanf(pub_hex + 2*i, "%2hhx", &pub_bytes[i]);
+        }
+        OSSL_PARAM_BLD_push_octet_string(bld, "pub", pub_bytes, pub_len);
+    }
 
-    // Conversione BN -> Hex String
-    char *r_raw = BN_bn2hex(r);
-    char *s_raw = BN_bn2hex(s);
+    params = OSSL_PARAM_BLD_to_param(bld);
+    
+    EVP_PKEY_fromdata_init(pctx);
+    EVP_PKEY_fromdata(pctx, &pkey, EVP_PKEY_KEYPAIR, params);
 
-    // Padding per avere lunghezza fissa
+    // Cleanup
+    if (bn_priv) BN_free(bn_priv);
+    if (pub_bytes) OPENSSL_free(pub_bytes);
+    OSSL_PARAM_free(params);
+    OSSL_PARAM_BLD_free(bld);
+    EVP_PKEY_CTX_free(pctx);
+
+    return pkey;
+}
+
+// 2. Generazione Keypair (OpenSSL 3.0 Way)
+void generate_keypair(char *priv_hex_out, char *pub_hex_out) {
+    // Generazione facile in una riga (Feature di OpenSSL 3.0)
+    EVP_PKEY *pkey = EVP_PKEY_Q_keygen(NULL, NULL, "EC", "secp256k1");
+    if (!pkey) handle_openssl_error();
+
+    // Estrazione Private Key (Big Number)
+    BIGNUM *priv_bn = NULL;
+    EVP_PKEY_get_bn_param(pkey, "priv", &priv_bn);
+    char *hex_priv = BN_bn2hex(priv_bn);
+    strcpy(priv_hex_out, hex_priv);
+
+    // Estrazione Public Key (Octet String)
+    unsigned char pub_buf[128];
+    size_t pub_len = 0;
+    // Otteniamo la dimensione
+    EVP_PKEY_get_octet_string_param(pkey, "pub", NULL, 0, &pub_len); 
+    // Otteniamo i dati
+    EVP_PKEY_get_octet_string_param(pkey, "pub", pub_buf, sizeof(pub_buf), &pub_len);
+
+    // Convertiamo buffer binario in Hex String
+    for(size_t i=0; i<pub_len; i++) {
+        sprintf(pub_hex_out + (i*2), "%02X", pub_buf[i]);
+    }
+    pub_hex_out[pub_len*2] = '\0';
+
+    // Cleanup
+    OPENSSL_free(hex_priv);
+    BN_free(priv_bn);
+    EVP_PKEY_free(pkey);
+}
+
+// 3. Firma ECDSA (EVP Interface)
+void ecdsa_sign(const char *private_key_hex, const char *message, char *signature_hex) {
+    EVP_PKEY *pkey = get_pkey_from_hex(private_key_hex, NULL);
+    if (!pkey) handle_openssl_error();
+
+    EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
+    
+    // Inizializza firma con SHA256
+    EVP_DigestSignInit(mdctx, NULL, EVP_sha256(), NULL, pkey);
+    
+    // Calcola firma (output è in formato DER binario)
+    size_t sig_len = 0;
+    EVP_DigestSign(mdctx, NULL, &sig_len, (unsigned char*)message, strlen(message));
+    unsigned char *sig_buf = OPENSSL_malloc(sig_len);
+    EVP_DigestSign(mdctx, sig_buf, &sig_len, (unsigned char*)message, strlen(message));
+
+    // Decodifica DER per estrarre R e S (per avere la stringa fissa 64+64)
+    // Usiamo d2i_ECDSA_SIG che non è deprecata per il parsing dei dati grezzi
+    const unsigned char *p = sig_buf;
+    ECDSA_SIG *ecdsa_sig = d2i_ECDSA_SIG(NULL, &p, sig_len);
+    
+    const BIGNUM *r = ECDSA_SIG_get0_r(ecdsa_sig);
+    const BIGNUM *s = ECDSA_SIG_get0_s(ecdsa_sig);
+
+    char *r_hex = BN_bn2hex(r);
+    char *s_hex = BN_bn2hex(s);
+    
     char r_fixed[65], s_fixed[65];
-    pad_hex(r_raw, r_fixed);
-    pad_hex(s_raw, s_fixed);
-
-    // Concatenazione finale (64 + 64 = 128 chars)
+    pad_hex(r_hex, r_fixed);
+    pad_hex(s_hex, s_fixed);
+    
     sprintf(signature_hex, "%s%s", r_fixed, s_fixed);
 
-    // Pulizia memoria (Fondamentale in C!)
-    OPENSSL_free(r_raw);
-    OPENSSL_free(s_raw);
-    ECDSA_SIG_free(sig);
-    BN_free(priv_bn);
-    EC_KEY_free(key);
+    // Cleanup
+    OPENSSL_free(r_hex); OPENSSL_free(s_hex);
+    OPENSSL_free(sig_buf);
+    ECDSA_SIG_free(ecdsa_sig);
+    EVP_MD_CTX_free(mdctx);
+    EVP_PKEY_free(pkey);
 }
 
-// 3. Verifica ECDSA (Ricostruzione corretta della chiave pubblica)
+// 4. Verifica ECDSA
 void ecdsa_verify(const char *public_key_hex, const char *message, const char *signature_hex, int *is_valid) {
-    EC_KEY *key = EC_KEY_new_by_curve_name(NID_secp256k1);
-    const EC_GROUP *group = EC_KEY_get0_group(key);
-    EC_POINT *pub_point = EC_POINT_new(group);
+    EVP_PKEY *pkey = get_pkey_from_hex(NULL, public_key_hex);
+    if (!pkey) { *is_valid = 0; return; }
 
-    // Converti Hex PubKey -> EC_POINT
-    // Nota: La PubKey deve essere in formato HEX non compresso (inizia con 04...)
-    if (!EC_POINT_hex2point(group, public_key_hex, pub_point, NULL)) {
-        fprintf(stderr, "[CRYPTO ERROR] Formato chiave pubblica errato\n");
-        *is_valid = 0;
-        goto cleanup;
-    }
-    EC_KEY_set_public_key(key, pub_point);
-
-    // Parsing della firma (Split a metà esatta: 64 char per R, 64 char per S)
+    // Ricostruzione Firma DER da R e S Hex
     char r_str[65], s_str[65];
-    strncpy(r_str, signature_hex, 64);      r_str[64] = '\0';
-    strncpy(s_str, signature_hex + 64, 64); s_str[64] = '\0';
+    strncpy(r_str, signature_hex, 64); r_str[64] = '\0';
+    strncpy(s_str, signature_hex+64, 64); s_str[64] = '\0';
 
     BIGNUM *r = NULL, *s = NULL;
     BN_hex2bn(&r, r_str);
     BN_hex2bn(&s, s_str);
 
-    ECDSA_SIG *sig = ECDSA_SIG_new();
-    ECDSA_SIG_set0(sig, r, s); // set0 trasferisce la proprietà della memoria, non serve BN_free dopo
+    ECDSA_SIG *ecdsa_sig = ECDSA_SIG_new();
+    ECDSA_SIG_set0(ecdsa_sig, r, s);
 
-    // Verifica
-    unsigned char hash[SHA256_DIGEST_LENGTH];
-    SHA256((unsigned char*)message, strlen(message), hash);
+    // Encoding DER (necessario per EVP_DigestVerify)
+    int der_len = i2d_ECDSA_SIG(ecdsa_sig, NULL);
+    unsigned char *der_sig = OPENSSL_malloc(der_len);
+    unsigned char *p = der_sig;
+    i2d_ECDSA_SIG(ecdsa_sig, &p);
 
-    int result = ECDSA_do_verify(hash, SHA256_DIGEST_LENGTH, sig, key);
-    *is_valid = (result == 1) ? 1 : 0;
+    // Verifica effettiva
+    EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
+    EVP_DigestVerifyInit(mdctx, NULL, EVP_sha256(), NULL, pkey);
+    
+    int result = EVP_DigestVerify(mdctx, der_sig, der_len, (unsigned char*)message, strlen(message));
+    *is_valid = (result == 1);
 
-    ECDSA_SIG_free(sig); // Libera anche r e s
-
-cleanup:
-    EC_POINT_free(pub_point);
-    EC_KEY_free(key);
-}
-
-// 4. Generatore di Chiavi (Ti serve per creare utenti!)
-void generate_keypair(char *priv_hex_out, char *pub_hex_out) {
-    EC_KEY *key = EC_KEY_new_by_curve_name(NID_secp256k1);
-    EC_KEY_generate_key(key);
-
-    const BIGNUM *priv = EC_KEY_get0_private_key(key);
-    const EC_POINT *pub = EC_KEY_get0_public_key(key);
-
-    char *priv_raw = BN_bn2hex(priv);
-    char *pub_raw = EC_POINT_point2hex(EC_KEY_get0_group(key), pub, POINT_CONVERSION_UNCOMPRESSED, NULL);
-
-    strcpy(priv_hex_out, priv_raw);
-    strcpy(pub_hex_out, pub_raw); // La PubKey inizierà con 04...
-
-    OPENSSL_free(priv_raw);
-    OPENSSL_free(pub_raw);
-    EC_KEY_free(key);
+    // Cleanup
+    OPENSSL_free(der_sig);
+    ECDSA_SIG_free(ecdsa_sig);
+    EVP_MD_CTX_free(mdctx);
+    EVP_PKEY_free(pkey);
 }

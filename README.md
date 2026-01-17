@@ -33,6 +33,30 @@ La scelta del linguaggio C è intenzionale al fine di mostrare le mitigazioni im
     2.  **Reveal:** A fine timer, l'utente svela la chiave.
 * **Memory Safety:** Gestione manuale della memoria e mitigazione delle eventuali vulnerabilità del codice in C.
 
+# Creazione del blocco genesi con chiavi hardcodate da `keygen.c`
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "wwyl_crypto.h" 
+
+int main() {
+    char my_priv_key[128];
+    char my_pub_key[256];
+
+    printf("[*] Generazione chiavi Genesi usando la lib wwyl_crypto\n");
+    generate_keypair(my_priv_key, my_pub_key);
+
+    printf("\n=== COPIA E INCOLLA IN wwyl_config.h ===\n\n");
+    
+    printf("// Chiavi Genesi generate il %s\n", __DATE__);
+    printf("#define GENESIS_PRIV_KEY \"%s\"\n", my_priv_key);
+    printf("#define GENESIS_PUB_KEY  \"%s\"\n", my_pub_key);
+
+    return 0;
+}
+```
+
 ## 🗺 Roadmap di Sviluppo
 
 ### Fase 1: Primitive Crittografiche (✅ Completata)
@@ -42,7 +66,7 @@ La scelta del linguaggio C è intenzionale al fine di mostrare le mitigazioni im
 - [x] Definizione delle Struct di base (`wwyl.h`).
 
 ### Fase 2: Il Ledger Core (🚧 In Corso)
-- [ ] Implementazione del Blocco Genesi.
+- [x] Implementazione del Blocco Genesi.
 - [ ] Logica di concatenazione blocchi (Hash Chain).
 - [ ] Validazione dell'integrità della catena.
 - [ ] Serializzazione dei dati per lo storage su file.
