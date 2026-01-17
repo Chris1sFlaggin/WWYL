@@ -129,18 +129,18 @@ int main() {
 - [x] Gestione sicura delle stringhe e padding esadecimale.
 - [x] Definizione delle Struct di base (`wwyl.h`).
 
-### Fase 2: Il Ledger Core (🚧 In Corso)
+### Fase 2: Il Ledger Core (✅ Completata)
 - [x] Implementazione del Blocco Genesi.
 - [x] Logica di concatenazione blocchi (Hash Chain).
-- [ ] Validazione dell'integrità della catena.
+- [x] Validazione dell'integrità della catena.
 - [x] Serializzazione dei dati per lo storage su file.
 
-### Fase 3: Logica di Gioco (Prossimamente)
+### Fase 3: Logica di Gioco (🚧 In Corso)
 - [ ] Motore di calcolo dello Stato (Replay del Ledger in RAM).
 - [ ] Gestione delle Streak esponenziali.
 - [ ] Implementazione del timer 24h per il Commit-Reveal.
 
-### Fase 4: Networking (Futuro)
+### Fase 4: Networking (Prossimamente)
 - [ ] Architettura Client-Server su Socket TCP.
 - [ ] Protocollo di scambio pacchetti firmati.
 - [ ] CLI (Command Line Interface) interattiva per gli utenti.
