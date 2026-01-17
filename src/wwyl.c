@@ -62,8 +62,7 @@ void serialize_block_content(const Block *block, char *buffer, size_t size) {
             break;
         case ACT_FOLLOW_USER:
             snprintf(payload_str, sizeof(payload_str), "%s:%d",
-                     block->data.follow.target_user_pubkey,
-                     block->data.follow.follow_action);
+                     block->data.follow.target_user_pubkey);
             break;
         default:
             snprintf(payload_str, sizeof(payload_str), "UNKNOWN");
@@ -184,8 +183,7 @@ void print_block(const Block *block) {
                    block->data.reveal.salt_secret);
             break;
         case ACT_FOLLOW_USER:
-            printf("# Follow Action: %s user %s\n", 
-                   (block->data.follow.follow_action == 1) ? "Follow" : "Unfollow",
+            printf("# Follow Action: user %s\n", 
                    block->data.follow.target_user_pubkey);
             break;
         default:
@@ -247,7 +245,6 @@ Block *mine_new_block(Block *prev_block, ActionType type, const void *payload_da
     case ACT_FOLLOW_USER:
         snprintf(new_block->data.follow.target_user_pubkey, SIGNATURE_LEN, "%s", 
                  ((PayloadFollow *)payload_data)->target_user_pubkey);
-        new_block->data.follow.follow_action = ((PayloadFollow *)payload_data)->follow_action;
         break;
 
     case ACT_REGISTER_USER:

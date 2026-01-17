@@ -62,3 +62,18 @@ int user_login(Block *genesis, const char *privkey_hex, const char *pubkey_hex) 
     printf("[LOGIN] Benvenuto! Accesso effettuato.\n");
     return 1;
 }
+
+Block *user_follow(Block *genesis, Block *prev_block, const void *payload, const char *privkey_hex, const char *pubkey_hex) {
+    const PayloadFollow *input = (const PayloadFollow*)payload;
+    PayloadFollow reg_data;
+
+    memset(&reg_data, 0, sizeof(PayloadFollow));
+    snprintf(reg_data.target_user_pubkey, sizeof(reg_data.target_user_pubkey), "%s", input->target_user_pubkey);
+
+    if (!is_user_registered(genesis, reg_data.target_user_pubkey)) {
+        printf("[FOLLOW] Target inesistente.\n");
+        return 0;
+    }
+
+    return mine_new_block(prev_block, ACT_FOLLOW_USER, &reg_data, pubkey_hex, privkey_hex);
+}

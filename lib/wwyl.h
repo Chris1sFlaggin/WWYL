@@ -52,7 +52,6 @@ typedef struct {
 
 typedef struct {
     char target_user_pubkey[SIGNATURE_LEN]; // La chiave pubblica dell'utente da seguire
-    int follow_action;               // 1 = Segui, -1 = Smetti di seguire
 } PayloadFollow;
 
 // --- STRUTTURA BLOCCO / TRANSAZIONE (BLOCKCHAIN) ---
@@ -82,18 +81,6 @@ typedef struct Block {
 
     struct Block *next; // Per la lista concatenata in memoria RAM
 } Block;
-
-// --- STRUTTURA STATO UTENTE (IN MEMORIA) ---
-typedef struct {
-    char wallet_address[SIGNATURE_LEN];
-    int token_balance;
-    int best_streak;
-    int current_streak;
-
-    int followers_count;
-    int following_count;
-    int total_posts;
-} UserState;
 
 // === AGGIUNGI QUESTI PROTOTIPI ===
 Block* initialize_blockchain(void);
