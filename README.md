@@ -33,7 +33,7 @@ La scelta del linguaggio C è intenzionale al fine di mostrare le mitigazioni im
     2.  **Reveal:** A fine timer, l'utente svela la chiave.
 * **Memory Safety:** Gestione manuale della memoria e mitigazione delle eventuali vulnerabilità del codice in C.
 
-# Creazione del blocco genesi con chiavi hardcodate da `keygen.c`
+#### Creazione del blocco genesi con chiavi hardcodate da `keygen.c`
 ```c
 #include <stdio.h>
 #include <stdlib.h>
