@@ -6,7 +6,7 @@
 
 // --- COSTANTI DI SICUREZZA ---
 #define HASH_LEN 65         // SHA256 hex string + null terminator
-#define SIGNATURE_LEN 130   // Firma ECDSA hex
+#define SIGNATURE_LEN 132   // Firma ECDSA hex
 #define MAX_CONTENT_LEN 256 // Limite tweet
 #define MAX_NAME_LEN 32
 
