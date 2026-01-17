@@ -84,7 +84,6 @@ typedef struct Block {
 } Block;
 
 // --- STRUTTURA STATO UTENTE (IN MEMORIA) ---
-// Questo non va su disco/blockchain, è calcolato leggendo i blocchi
 typedef struct {
     char wallet_address[SIGNATURE_LEN];
     int token_balance;
@@ -96,7 +95,10 @@ typedef struct {
     int total_posts;
 } UserState;
 
+// === AGGIUNGI QUESTI PROTOTIPI ===
 Block* initialize_blockchain(void);
 void print_block(const Block *block);
+Block *mine_new_block(Block *prev_block, ActionType type, const void *payload_data, const char *sender_pubkey, const char *sender_privkey);
+int integrity_check(Block *prev, Block *curr); 
 
 #endif

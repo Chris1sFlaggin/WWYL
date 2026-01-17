@@ -402,8 +402,6 @@ Block *load_blockchain() {
 }
 
 int main() {
-    // Invece di initialize_blockchain(), usiamo load_blockchain()
-    //    che gestisce sia il caricamento che la creazione se vuoto.
     Block *blockchain = load_blockchain();
 
     // Troviamo l'ultimo blocco
@@ -422,18 +420,28 @@ int main() {
     
     if (new_b) {
         print_block(new_b);
+        last = new_b; 
     }
 
-    Block *user_block = register_user(
-        blockchain, 
-        &(PayloadRegister){ 
-            .username = "Chris", 
-            .bio = "Dev della blockchain", 
-            .pic_url = "https://imgur.com/avatar.png" 
-        }, 
-        GOD_PRIV_KEY, 
-        GOD_PUB_KEY
+    char my_priv[128];
+    char my_pub[256];
+    generate_keypair(my_priv, my_pub); 
+
+    printf("Nuove chiavi generate!\nPriv: %s\nPub: %s\n", my_priv, my_pub);
+
+    Block *reg_block = register_user(
+        last, 
+        &(PayloadRegister){.username="NuovoUser"}, 
+        my_priv,
+        my_pub
     );
+
+    if (reg_block) {
+        printf("[SUCCESS] Utente registrato nel blocco #%d\n", reg_block->index);
+        print_block(reg_block); 
+        last = reg_block;       
+    }
+    
     save_blockchain(blockchain);
 
     EVP_cleanup();

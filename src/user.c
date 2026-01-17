@@ -23,9 +23,7 @@ Block *register_user(Block *prev_block, const void *payload, const char *privkey
         printf("[USER] Utente già registrato con questa chiave pubblica.\n");
         return NULL;
     }
-    
     const PayloadRegister *input = (const PayloadRegister *)payload;
-
     PayloadRegister reg_data;
     
     memset(&reg_data, 0, sizeof(PayloadRegister));
@@ -38,21 +36,17 @@ Block *register_user(Block *prev_block, const void *payload, const char *privkey
 
     return mine_new_block(prev_block, ACT_REGISTER_USER, &reg_data, pubkey_hex, privkey_hex);
 }
+
 // ----------------------------------------------------------
 // LOGIN UTENTE COMPLETO
 // ----------------------------------------------------------
 int user_login(Block *genesis, const char *privkey_hex, const char *pubkey_hex) {
-    // VERIFICA MATEMATICA (La chiave privata apre quella pubblica?)
+    // VERIFICA MATEMATICA
     const char *test_message = "LOGIN_VERIFICATION";
     char test_signature[SIGNATURE_LEN];
     int is_crypto_valid = 0;
 
-    // Firmo
-    if (!ecdsa_sign(privkey_hex, test_message, test_signature)) {
-        printf("[LOGIN] Errore formato chiave privata.\n");
-        return 0;
-    }
-
+    ecdsa_sign(privkey_hex, test_message, test_signature);
     ecdsa_verify(pubkey_hex, test_message, test_signature, &is_crypto_valid);
 
     if (!is_crypto_valid) {
@@ -61,7 +55,7 @@ int user_login(Block *genesis, const char *privkey_hex, const char *pubkey_hex) 
     }
 
     if (!is_user_registered(genesis, pubkey_hex)) {
-        printf("[LOGIN] Chiavi valide, ma utente non trovato nella blockchain.\n");
+        printf("[LOGIN] Chiavi valide, ma nessun account trovato sulla blockchain.\n");
         return 0;
     }
 
