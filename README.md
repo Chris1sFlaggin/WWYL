@@ -69,7 +69,7 @@ int main() {
 - [x] Implementazione del Blocco Genesi.
 - [ ] Logica di concatenazione blocchi (Hash Chain).
 - [ ] Validazione dell'integrità della catena.
-- [ ] Serializzazione dei dati per lo storage su file.
+- [x] Serializzazione dei dati per lo storage su file.
 
 ### Fase 3: Logica di Gioco (Prossimamente)
 - [ ] Motore di calcolo dello Stato (Replay del Ledger in RAM).

@@ -1,6 +1,4 @@
 #include "wwyl_crypto.h"
-#include <openssl/err.h>
-#include <openssl/pem.h>
 
 // --- HELPER: Padding Hex (Invariato) ---
 void pad_hex(const char* input_hex, char* output_fixed_64) {
