@@ -51,9 +51,9 @@ Ho implementato un processo di Serializzazione Deterministica e un flusso di fir
 +-----------+-----------+
             |
             v
-[ 1. SERIALIZZAZIONE DETERMINISTICA ]
-"42:1735689600:045A...B2:1:HelloWorld"
-(Conversione in stringa raw unica e immutabile)
+[        1. SERIALIZZAZIONE DETERMINISTICA      ]
+["42:1735689600:045A...B2:1:HelloWorld"         ]
+[(Conversione in stringa raw unica e immutabile)]
             |
             v
 [ 2. HASHING SHA-256    ]
@@ -70,8 +70,8 @@ Ho implementato un processo di Serializzazione Deterministica e un flusso di fir
 +--------------------------+    
              |          
              v
-[ 4. FIRMA DIGITALE (DER) ]
-Blob binario ASN.1 (R + S)
+[  4. FIRMA DIGITALE (DER) ]
+[Blob binario ASN.1 (R + S)]
              |
              v
 [     5. NORMALIZZAZIONE     ]
@@ -79,7 +79,7 @@ Blob binario ASN.1 (R + S)
 [Padding Hex a 64 char l'uno ]
              |
              v
-[ BLOCCO FIRMATO E VALIDO ]      
+[      6. BLOCCO FIRMATO E VALIDO           ]      
 +-------------------------------------------+
 | Signature: 7c3b8a... (128 char hex string)|
 +-------------------------------------------+
