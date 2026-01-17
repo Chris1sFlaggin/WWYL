@@ -40,48 +40,49 @@ Il Flusso di Firma del Blocco (Block Signing Flow)
 La sfida principale in una blockchain C non è solo firmare, ma garantire che ciò che viene firmato sia identico per ogni nodo della rete. Un solo byte di differenza (come il padding di una struct) cambierebbe l'hash e invaliderebbe la firma.
 Ho implementato un processo di Serializzazione Deterministica e un flusso di firma a più stadi per garantire la consistenza.
 
-```
-   [ STRUCT BLOCK (RAM) ]
-   +-----------------------+
-   | Index:   42           |
-   | Time:    1735689600   |
-   | Type:    POST (1)     |
-   | Sender:  045A...B2    |
-   | Payload: "Hello World"|
-   +-----------+-----------+
-               |
-               v
-   [ 1. SERIALIZZAZIONE DETERMINISTICA ]
-   "42:1735689600:045A...B2:1:Hello World"
-   (Conversione in stringa raw unica e immutabile)
-               |
-               v
-      [ 2. HASHING SHA-256 ]
-      +-------------------+
-      |  SHA256 Digest    |
-      |  (32 bytes raw)   |
-      +--------+----------+
-               |
-               v
-      [ 3. FIRMA ECDSA (secp256k1) ]
-      +--------------------------+
-      | Chiave Privata (Wallet)  | 
-      |[ OpenSSL EVP_DigestSign ]|
-      +--------------------------+              
-                    v
-      [ 4. FIRMA DIGITALE (DER) ]
-       Blob binario ASN.1 (R + S)
-                    |
-                    v
-        [ 5. NORMALIZZAZIONE ]
-      Estrazione R (32b) + S (32b)
-      Padding Hex a 64 char l'uno
-                    |
-                    v
-      [ BLOCCO FIRMATO E VALIDO ]      
-   +-------------------------------------------------------+
-   | Signature: 7c3b8a... (128 char hex string)            |
-   +-------------------------------------------------------+
+```md
+[   STRUCT BLOCK (RAM)  ]
++-----------------------+
+| Index:   42           |
+| Time:    1735689600   |
+| Type:    POST (1)     |
+| Sender:  045A...B2    |
+| Payload: "Hello World"|
++-----------+-----------+
+            |
+            v
+[ 1. SERIALIZZAZIONE DETERMINISTICA ]
+"42:1735689600:045A...B2:1:HelloWorld"
+(Conversione in stringa raw unica e immutabile)
+            |
+            v
+[ 2. HASHING SHA-256    ]
++-----------------------+
+|     SHA256 Digest     |
+|    (32 bytes raw)     |
++-----------+-----------+
+            |
+            v
+[3. FIRMA ECDSA (secp256k1)]
++--------------------------+
+| Chiave Privata (Wallet)  | 
+|[ OpenSSL EVP_DigestSign ]|
++--------------------------+    
+             |          
+             v
+[ 4. FIRMA DIGITALE (DER) ]
+Blob binario ASN.1 (R + S)
+             |
+             v
+[     5. NORMALIZZAZIONE     ]
+[Estrazione R (32b) + S (32b)]
+[Padding Hex a 64 char l'uno ]
+             |
+             v
+[ BLOCCO FIRMATO E VALIDO ]      
++-------------------------------------------------------+
+| Signature: 7c3b8a... (128 char hex string)            |
++-------------------------------------------------------+
 
 ```
 
