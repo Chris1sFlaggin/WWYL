@@ -19,7 +19,7 @@ In un'era digitale dominata da bot, fake news e like inflazionati, il valore del
 * Se il post sopravvive alla critica (Like > Dislike): Entri in una streak in cui guadagni sempre più token.
 * Se il post viene rifiutato: Perdi la scommessa e la tua puntata viene distribuita a chi ti ha criticato.
 
-Il sistema utilizza la crittografia per rendere **matematicamente svantaggioso mentire**.
+Il sistema utilizza la crittografia per rendere **economicamente svantaggioso mentire**.
 
 ## 🛠 Architettura Tecnica
 Questo progetto non è un semplice social. È una **Blockchain Custom scritta da zero in C**.
@@ -33,7 +33,71 @@ La scelta del linguaggio C è intenzionale al fine di mostrare le mitigazioni im
     2.  **Reveal:** A fine timer, l'utente svela la chiave.
 * **Memory Safety:** Gestione manuale della memoria e mitigazione delle eventuali vulnerabilità del codice in C.
 
-# Creazione del blocco genesi con chiavi hardcodate da `keygen.c`
+### 🛡️ Architettura Crittografica & Security Core
+La sicurezza e l'integrità di WWYL non si basano sulla fiducia, ma su prove crittografiche verificabili. Ho progettato il modulo wwyl_crypto (basato su OpenSSL 3.0+) per aderire agli standard più moderni.
+La scelta dell'algoritmo è ricaduta su ECDSA (Elliptic Curve Digital Signature Algorithm) sulla curva secp256k1, lo stesso standard industriale utilizzato da Bitcoin ed Ethereum per la sua efficienza e robustezza.
+Il Flusso di Firma del Blocco (Block Signing Flow)
+La sfida principale in una blockchain C non è solo firmare, ma garantire che ciò che viene firmato sia identico per ogni nodo della rete. Un solo byte di differenza (come il padding di una struct) cambierebbe l'hash e invaliderebbe la firma.
+Ho implementato un processo di Serializzazione Deterministica e un flusso di firma a più stadi per garantire la consistenza.
+
+```md
+[   STRUCT BLOCK (RAM)  ]
++-----------------------+
+| Index:   42           |
+| Time:    1735689600   |
+| Type:    POST (1)     |
+| Sender:  045A...B2    |
+| Payload: "Hello World"|
++-----------+-----------+
+            |
+            v
+[        1. SERIALIZZAZIONE DETERMINISTICA      ]
+["42:1735689600:045A...B2:1:HelloWorld"         ]
+[(Conversione in stringa raw unica e immutabile)]
+            |
+            v
+[ 2. HASHING SHA-256    ]
++-----------------------+
+|     SHA256 Digest     |
+|    (32 bytes raw)     |
++-----------+-----------+
+            |
+            v
+[3. FIRMA ECDSA (secp256k1)]
++--------------------------+
+| Chiave Privata (Wallet)  | 
+|[ OpenSSL EVP_DigestSign ]|
++--------------------------+    
+             |          
+             v
+[  4. FIRMA DIGITALE (DER) ]
+[Blob binario ASN.1 (R + S)]
+             |
+             v
+[     5. NORMALIZZAZIONE     ]
+[Estrazione R (32b) + S (32b)]
+[Padding Hex a 64 char l'uno ]
+             |
+             v
+[      6. BLOCCO FIRMATO E VALIDO           ]      
++-------------------------------------------+
+| Signature: 7c3b8a... (128 char hex string)|
++-------------------------------------------+
+
+```
+
+#### Sfide Implementative
+Durante lo sviluppo del core crittografico, ho affrontato due sfide tecniche principali che distinguono questa implementazione da esempi didattici standard.
+1. Adozione di OpenSSL 3.0 EVP (Modernizzazione)
+La maggior parte della documentazione online utilizza le funzioni di basso livello EC_KEY, ora deprecate in OpenSSL 3.0. Ho scelto di utilizzare l'interfaccia moderna ad alto livello EVP (Envelope).
+ * La Sfida: Le API EVP sono astratte e verbose. Non si manipolano direttamente i parametri della curva.
+ * La Soluzione: Ho utilizzato OSSL_PARAM_BLD per costruire programmaticamente le chiavi dai dati grezzi esadecimali.
+2. Gestione del Formato DER vs R/S Raw
+OpenSSL, per standard, restituisce le firme nel formato binario ASN.1/DER. Questo formato è a lunghezza variabile e complesso da parsare, inadatto per essere memorizzato in un campo di testo a lunghezza fissa in una blockchain.
+ * La Sfida: Estrarre i valori matematici puri della firma (i componenti crittografici R e S) dal blob binario DER.
+ * La Soluzione: Ho implementato un flusso di decodifica manuale (d2i_ECDSA_SIG) post-firma per estrarre i Big Number R e S. Successivamente, li converto in esadecimale e applico un padding rigoroso per garantire che la firma finale sia sempre una stringa fissa di 128 caratteri (64 per R + 64 per S), essenziale per la prevedibilità della struttura dati.
+
+#### Creazione del blocco genesi con chiavi hardcodate da `keygen.c`
 ```c
 #include <stdio.h>
 #include <stdlib.h>
