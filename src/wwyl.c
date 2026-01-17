@@ -4,6 +4,26 @@
 #include "wwyl_config.h" 
 
 // ---------------------------------------------------------
+// OTTIENI ID BLOCCO
+// ---------------------------------------------------------
+int getBlockId(Block block) {
+    return block.index;
+}
+
+// ---------------------------------------------------------
+// VERIFICA INTEGRITÀ LINK TRA DUE BLOCCHI
+// ---------------------------------------------------------
+int integrity_check(Block *prev, Block *curr) {
+    if (strcmp(curr->prev_hash, prev->curr_hash) != 0) {
+        fprintf(stderr, "[ALERT] BROKEN CHAIN at Block #%d!\n", curr->index);
+        fprintf(stderr, "        Expected Prev: %s\n", prev->curr_hash);
+        fprintf(stderr, "        Found Prev:    %s\n", curr->prev_hash);
+        return 0; // Fail
+    }
+    return 1; // Success
+}
+
+// ---------------------------------------------------------
 // HELPER: Serializzazione per Hashing
 // ---------------------------------------------------------
 // Per calcolare l'hash di un blocco, dobbiamo trasformare i suoi campi 
@@ -245,28 +265,155 @@ Block *mine_new_block(Block *prev_block, ActionType type, const void *payload_da
     prev_block->next = new_block;
 
     printf("[MINED] Block #%d (Type: %d) mined by %.10s...\n", new_block->index, new_block->type, new_block->sender_pubkey);
+
+    // Sanity Check finale
+    if (!integrity_check(prev_block, new_block)) {
+        prev_block->next = NULL; // Scolleghiamo il blocco corrotto
+        free(new_block);         // Liberiamo la memoria
+        return NULL;             // Segnaliamo errore
+    }
+
     return new_block;
 }
 
-int getBlockId(Block block) {
-    return block.index;
+// ---------------------------------------------------------
+// VERIFICA INTEGRITÀ BLOCKCHAIN
+// ---------------------------------------------------------
+int verifyFullChain(Block *genesis) {
+    if (!genesis) return 0; // Catena vuota o nulla
+
+    Block *prev = genesis;
+    Block *curr = genesis->next;
+    char temp_hash[HASH_LEN + 1];
+    char raw_buffer[2048];
+    int count = 1;
+
+    printf("\n[SECURITY] Avvio verifica integrità blockchain...\n");
+
+    // Loop su tutti i blocchi successivi al Genesi
+    while (curr != NULL) {
+        
+        if (integrity_check(prev, curr) == 0) {
+            return 0; // Fail
+        }
+
+        serialize_block_content(curr, raw_buffer, sizeof(raw_buffer));
+        sha256_hash(raw_buffer, strlen(raw_buffer), temp_hash);
+
+        if (strcmp(temp_hash, curr->curr_hash) != 0) {
+            fprintf(stderr, "[ALERT] DATA TAMPERING at Block #%d!\n", curr->index);
+            fprintf(stderr, "        Stored Hash:      %s\n", curr->curr_hash);
+            fprintf(stderr, "        Calculated Hash:  %s\n", temp_hash);
+            return 0; // Fail
+        }
+
+        prev = curr;
+        curr = curr->next;
+        count++;
+    }
+
+    printf("[SECURITY] Chain Verified. %d blocks checked. Status: SECURE.\n", count);
+    return 1; 
+}
+
+// ---------------------------------------------------------
+// PERSISTENZA: SALVATAGGIO SU FILE
+// ---------------------------------------------------------
+void save_blockchain(Block *genesis) {
+    FILE *f = fopen("wwyl_chain.dat", "wb"); // Write Binary
+    if (!f) {
+        perror("[ERR] Cannot save blockchain");
+        return;
+    }
+
+    Block *curr = genesis;
+    int count = 0;
+    while (curr != NULL) {
+        // Scriviamo la struttura del blocco grezza su disco
+        fwrite(curr, sizeof(Block), 1, f);
+        curr = curr->next;
+        count++;
+    }
+
+    fclose(f);
+    printf("[DISK] Blockchain saved! (%d blocks written)\n", count);
+}
+
+// ---------------------------------------------------------
+// PERSISTENZA: CARICAMENTO SICURO (Il 3° Controllo!)
+// ---------------------------------------------------------
+Block *load_blockchain() {
+    FILE *f = fopen("wwyl_chain.dat", "rb"); // Read Binary
+    if (!f) {
+        printf("[INFO] Nessuna blockchain trovata su disco. Creazione Genesi...\n");
+        return initialize_blockchain(); // Se non c'è file, partiamo da zero
+    }
+
+    printf("[DISK] Loading blockchain from file...\n");
+
+    Block *root = NULL;
+    Block *prev = NULL;
+    Block *curr = NULL;
+    int count = 0;
+
+    while (1) {
+        curr = (Block *)safe_zalloc(sizeof(Block));
+        
+        // Leggiamo un blocco alla volta
+        if (fread(curr, sizeof(Block), 1, f) != 1) {
+            free(curr); // Fine del file o errore
+            break; 
+        }
+
+        // Ricostruiamo i puntatori in RAM
+        curr->next = NULL; // Importante pulire il next letto dal disco (che è vecchio)
+
+        if (root == NULL) {
+            root = curr; // Il primo letto è il Genesi
+        } else {
+            prev->next = curr; // Colleghiamo la lista
+        }
+
+        prev = curr;
+        count++;
+    }
+    fclose(f);
+    printf("[DISK] Loaded %d blocks.\n", count);
+
+    if (!verifyFullChain(root)) {
+        fatal_error("CORRUPTED CHAIN DETECTED ON DISK! REFUSING TO START.");
+    }
+
+    return root;
 }
 
 int main() {
-    Block *zero = initialize_blockchain();
+    // 1. Invece di initialize_blockchain(), usiamo load_blockchain()
+    //    che gestisce sia il caricamento che la creazione se vuoto.
+    Block *blockchain = load_blockchain();
 
-    print_block(zero);
+    // Troviamo l'ultimo blocco per minare in coda
+    Block *last = blockchain;
+    while (last->next != NULL) {
+        last = last->next;
+    }
 
-    Block *blockchain_1 = mine_new_block(zero, ACT_POST_CONTENT, &(PayloadPost){ .content = "Hello WWYL!" }, GOD_PUB_KEY, GOD_PRIV_KEY);
-    print_block(zero);
-    print_block(blockchain_1);
+    printf("\n--- NODO AVVIATO ---\n");
+    print_block(last); // Vediamo dove siamo rimasti
 
-    Block *blockchain_2 = mine_new_block(blockchain_1, ACT_POST_COMMENT, &(PayloadComment){.target_post_id = getBlockId(*blockchain_1), .content = "posttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttBel post!"}, GOD_PUB_KEY, GOD_PRIV_KEY);
-    print_block(zero);
-    print_block(blockchain_1);
-    print_block(blockchain_2);
+    // 2. Aggiungiamo un nuovo blocco (così testiamo che la catena cresce)
+    printf("\n[ACTION] Aggiungo un nuovo post...\n");
+    Block *new_b = mine_new_block(last, ACT_POST_CONTENT, 
+                                 &(PayloadPost){ .content = "Persistence check!" }, 
+                                 GOD_PUB_KEY, GOD_PRIV_KEY);
+    
+    if (new_b) {
+        print_block(new_b);
+    }
+
+    // 3. Salviamo tutto prima di uscire
+    save_blockchain(blockchain);
 
     EVP_cleanup();
-
     return 0;   
 }

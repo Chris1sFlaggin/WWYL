@@ -31,6 +31,8 @@ LIBS = -lssl -lcrypto
 TARGET = wwyl_node
 SRCS = $(SRC_DIR)/wwyl.c $(SRC_DIR)/utils.c $(SRC_DIR)/wwyl_crypto.c
 
+DATA = wwyl_chain.dat
+
 # ==========================================
 # Rules
 # ==========================================
@@ -49,7 +51,7 @@ $(TARGET): $(SRCS)
 # Pulizia
 clean:
 	@echo "[CLEAN] Rimozione file binari..."
-	rm -f $(TARGET) *.o
+	rm -f $(TARGET) *.o $(DATA)
 
 # Info utile per debug
 info:
