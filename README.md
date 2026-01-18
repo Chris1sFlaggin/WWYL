@@ -6,41 +6,53 @@
 ![Status](https://img.shields.io/badge/status-Thesis_Prototype-orange?style=for-the-badge)
 ![Security](https://img.shields.io/badge/crypto-OpenSSL-red?style=for-the-badge&logo=openssl&logoColor=white)
 
-### A Game-Theoretic Anarchist Decentralized Social Protocol 
-#### Progetto sviluppato per conseguite la mia tesi universitaria dal possibile titolo "Sicurezza delle transazioni in ambito Blockchain: implementazione in C del protocollo Commit-Reveal contro il Front-Runnin".
-
-> *"Freedom of speech is not freedom from consequences."*
-
-## 📜 Il Manifesto
+> "Freedom of speech is not freedom from consequences."
+> 
+📜 Il Manifesto
 In un'era digitale dominata da bot, fake news e like inflazionati, il valore della verità è crollato. I social network attuali sono gratuiti, e per questo motivo, dire bugie non costa nulla.
+WWYL è un esperimento di SocialFi e Sicurezza Informatica che inverte questo paradigma.
+È un protocollo di social betting decentralizzato dove ogni post è una scommessa finanziaria contro la community.
+ * Se il post sopravvive alla critica (Like > Dislike): L'autore guadagna reputazione (Streak) e il protocollo conia nuovi token per lui. I votanti vincono il piatto dei dissenzienti.
+ * Se il post viene rifiutato: L'autore perde la puntata e la streak viene azzerata.
+Il sistema utilizza la crittografia per rendere economicamente svantaggioso mentire.
+🛠 Architettura Tecnica: The Hybrid Ledger
+Questo progetto non è un semplice social. È una Blockchain Custom scritta da zero in C.
+La scelta del linguaggio C è intenzionale per mostrare la gestione di basso livello della memoria, l'ottimizzazione delle risorse e l'implementazione manuale delle primitive crittografiche.
+Il sistema adotta un'architettura ibrida Disk/RAM:
+ * Disk (Il Ledger): Una lista concatenata di blocchi immutabili (wwyl_chain.dat) garantisce la persistenza e la storia.
+ * RAM (Lo Stato): All'avvio, il nodo rilegge la storia (Event Sourcing) e costruisce in memoria delle Hashmap ottimizzate per l'accesso istantaneo a bilanci, stato dei post e voti.
+Core Features
+ * Event-Sourcing: Non salviamo lo stato degli utenti su disco, salviamo le transazioni. Lo stato è una proiezione deterministica della storia.
+ * Identity ECDSA: Autenticazione basata su crittografia asimmetrica secp256k1. Non esistono password, solo chiavi private.
+ * Anti-Replay Protection: Il login utilizza un sistema Challenge-Response basato su timestamp per impedire il riutilizzo di firme intercettate.
+ * Memory Safety: Allocatori custom (safe_zalloc) e pulizia rigorosa con Valgrind (0 memory leaks).
+🔐 Protocollo Commit-Reveal & Hashing
+Il cuore della sicurezza contro il Front-Running (o "sniping" dei voti) è il meccanismo di voto a due fasi. Senza di questo, un utente potrebbe attendere l'ultimo secondo, vedere cosa vota la maggioranza e votare uguale per vincere il piatto senza rischio.
+La Matematica del Voto Segreto
+In WWYL, un voto non è mai salvato in chiaro durante la fase di apertura. Viene salvato un Hash crittografico.
+La formula dell'hash implementata è:
+Hash = SHA256( PostID + VoteValue + Salt + PubKey )
 
-**WWYL** è un esperimento di **SocialFi** e **Sicurezza Informatica** che inverte questo paradigma.
-È un protocollo di *social betting* decentralizzato dove ogni post è una scommessa finanziaria contro la community.
-* Se il post sopravvive alla critica (Like > Dislike): Entri in una streak in cui guadagni sempre più token.
-* Se il post viene rifiutato: Perdi la scommessa e la tua puntata viene distribuita a chi ti ha criticato.
+ * PostID: Lega il voto a uno specifico contenuto.
+ * VoteValue: La scelta dell'utente (1 o -1).
+ * Salt: Una stringa segreta ("password") nota solo all'utente.
+ * PubKey: Lega il voto all'identità del votante (non ripudiabilità).
+Fase 1: COMMIT (Il Voto)
+L'utente calcola l'hash locale e lo invia alla blockchain.
+ * Stato: Il voto è registrato. I token vengono spesi e messi nel piatto.
+ * Visibilità: Nessuno sa cosa hai votato, perché l'hash è irreversibile senza il Salt.
+Fase 2: REVEAL (La Rivelazione)
+Dopo 24 ore (o al termine del periodo di voto), l'utente invia una transazione ACT_VOTE_REVEAL contenente il Voto in chiaro e il Salt.
+Il nodo ricalcola l'hash:
+if (SHA256(input) == Stored_Commit_Hash) -> Voto Valido
+else -> Tentativo di frode (Hash Mismatch)
 
-Il sistema utilizza la crittografia per rendere **economicamente svantaggioso mentire**.
-
-## 🛠 Architettura Tecnica
-Questo progetto non è un semplice social. È una **Blockchain Custom scritta da zero in C**.
-La scelta del linguaggio C è intenzionale al fine di mostrare le mitigazioni imparate in C e sfruttare al massimo la memoria.
-
-### Core Features
-* **Blockchain Event-Sourcing:** Non salviamo lo stato, salviamo la storia. Ogni azione (Post, Voto, Follow) è un blocco immutabile crittograficamente legato al precedente.
-* **Identity senza Password:** Autenticazione basata su crittografia asimmetrica **ECDSA (secp256k1)**. La tua chiave privata è il tuo account.
-* **Anti-Front-Running (Commit-Reveal):** Per impedire lo "sniping" dei voti all'ultimo secondo, utilizziamo uno schema a due fasi:
-    1.  **Commit:** L'utente invia l'hash del voto + un segreto (Salt). Il voto è registrato ma illeggibile.
-    2.  **Reveal:** A fine timer, l'utente svela la chiave.
-* **Memory Safety:** Gestione manuale della memoria e mitigazione delle eventuali vulnerabilità del codice in C.
-
-### 🛡️ Architettura Crittografica & Security Core
-La sicurezza e l'integrità di WWYL non si basano sulla fiducia, ma su prove crittografiche verificabili. Ho progettato il modulo wwyl_crypto (basato su OpenSSL 3.0+) per aderire agli standard più moderni.
-La scelta dell'algoritmo è ricaduta su ECDSA (Elliptic Curve Digital Signature Algorithm) sulla curva secp256k1, lo stesso standard industriale utilizzato da Bitcoin ed Ethereum per la sua efficienza e robustezza.
-Il Flusso di Firma del Blocco (Block Signing Flow)
-La sfida principale in una blockchain C non è solo firmare, ma garantire che ciò che viene firmato sia identico per ogni nodo della rete. Un solo byte di differenza (come il padding di una struct) cambierebbe l'hash e invaliderebbe la firma.
-Ho implementato un processo di Serializzazione Deterministica e un flusso di firma a più stadi per garantire la consistenza.
-
-```md
+Se l'hash coincide, il voto viene conteggiato. Se l'utente prova a cambiare voto o mente sul Salt, la verifica matematica fallisce e il voto è scartato.
+🛡️ Security Core: Firma e Blocchi
+La sicurezza dell'integrità dei dati si basa sulla firma digitale di ogni blocco.
+Block Signing Flow
+La sfida principale in C è garantire che i dati firmati siano identici byte-per-byte su ogni macchina, evitando problemi di struct padding.
+Per questo, ho implementato una Serializzazione Deterministica:
 [   STRUCT BLOCK (RAM)  ]
 +-----------------------+
 | Index:   42           |
@@ -51,162 +63,57 @@ Ho implementato un processo di Serializzazione Deterministica e un flusso di fir
 +-----------+-----------+
             |
             v
-[        1. SERIALIZZAZIONE DETERMINISTICA      ]
-["42:1735689600:045A...B2:1:HelloWorld"         ]
-[(Conversione in stringa raw unica e immutabile)]
+[ 1. SERIALIZZAZIONE ]
+"42:1735689600:045A...B2:1:HelloWorld"
+(Conversione in stringa raw unica e immutabile)
             |
             v
-[ 2. HASHING SHA-256    ]
-+-----------------------+
-|     SHA256 Digest     |
-|    (32 bytes raw)     |
-+-----------+-----------+
+[ 2. HASHING SHA-256 ] -> Digest (32 bytes)
             |
             v
-[3. FIRMA ECDSA (secp256k1)]
-+--------------------------+
-| Chiave Privata (Wallet)  | 
-|[ OpenSSL EVP_DigestSign ]|
-+--------------------------+    
-             |          
-             v
-[  4. FIRMA DIGITALE (DER) ]
-[Blob binario ASN.1 (R + S)]
-             |
-             v
-[     5. NORMALIZZAZIONE     ]
-[Estrazione R (32b) + S (32b)]
-[Padding Hex a 64 char l'uno ]
-             |
-             v
-[      6. BLOCCO FIRMATO E VALIDO           ]      
-+-------------------------------------------+
-| Signature: 7c3b8a... (128 char hex string)|
-+-------------------------------------------+
+[ 3. FIRMA ECDSA ] -> OpenSSL 3.0 EVP Interface
+            |
+            v
+[ 4. NORMALIZZAZIONE DER ]
+Estrazione manuale dei vettori R e S dalla struttura ASN.1 
+per ottenere una firma fissa a 128 byte esadecimali.
 
-```
-
-#### Sfide Implementative
-Durante lo sviluppo del core crittografico, ho affrontato due sfide tecniche principali che distinguono questa implementazione da esempi didattici standard.
-1. Adozione di OpenSSL 3.0 EVP (Modernizzazione)
-La maggior parte della documentazione online utilizza le funzioni di basso livello EC_KEY, ora deprecate in OpenSSL 3.0. Ho scelto di utilizzare l'interfaccia moderna ad alto livello EVP (Envelope).
- * La Sfida: Le API EVP sono astratte e verbose. Non si manipolano direttamente i parametri della curva.
- * La Soluzione: Ho utilizzato OSSL_PARAM_BLD per costruire programmaticamente le chiavi dai dati grezzi esadecimali.
-2. Gestione del Formato DER vs R/S Raw
-OpenSSL, per standard, restituisce le firme nel formato binario ASN.1/DER. Questo formato è a lunghezza variabile e complesso da parsare, inadatto per essere memorizzato in un campo di testo a lunghezza fissa in una blockchain.
- * La Sfida: Estrarre i valori matematici puri della firma (i componenti crittografici R e S) dal blob binario DER.
- * La Soluzione: Ho implementato un flusso di decodifica manuale (d2i_ECDSA_SIG) post-firma per estrarre i Big Number R e S. Successivamente, li converto in esadecimale e applico un padding rigoroso per garantire che la firma finale sia sempre una stringa fissa di 128 caratteri (64 per R + 64 per S), essenziale per la prevedibilità della struttura dati.
-
-### Implementazione delle HashMap per la Gestione dello Stato in RAM
-
-Una blockchain pura è inefficiente per le query: leggere il balance di un utente richiederebbe di scorrere **tutti** i blocchi dalla genesi. Per risolvere questo problema, ho implementato un sistema di **State Management in RAM** basato su **Hash Tables custom** per tenere conto dei dati in tempo reale.
-
-#### Architettura delle Mappe di Stato
-
-Il sistema mantiene **due hash map separate** per ottimizzare l'accesso ai dati:
-
-1. **`StateMap`** (Mappa Utenti): Indicizza gli utenti per chiave pubblica
-2. **`PostMap`** (Mappa Post): Indicizza i post per Block ID
-
-Entrambe utilizzano la strategia di **Chaining** per gestire le collisioni.
-
-#### Gestione Dinamica della Memoria (Resize Automatico)
-
-Per mantenere basse le collisioni, la hash map si **ridimensiona automaticamente** quando il **load factor** supera il 75%:
-
-```c
-void state_resize() {
-    int old_size = world_state.size;
-    int new_size = old_size * 2;  // Raddoppio
-    
-    StateNode **new_buckets = (StateNode **)safe_zalloc(
-        new_size * sizeof(StateNode *)
-    );
-
-    // Rehashing di tutti gli elementi
-    for (int i = 0; i < old_size; i++) {
-        StateNode *curr = world_state.buckets[i];
-        while (curr != NULL) {
-            StateNode *next = curr->next;
-            unsigned long new_index = hash_djb2(
-                curr->wallet_address, new_size
-            );
-            // Inserimento in testa nel nuovo bucket
-            curr->next = new_buckets[new_index];
-            new_buckets[new_index] = curr;
-            curr = next;
-        }
-    }
-
-    free(world_state.buckets);
-    world_state.buckets = new_buckets;
-    world_state.size = new_size;
-}
-```
-
-```C
-void post_index_resize() {
-    int old_size = global_post_index.size;
-    PostStateNode **old_buckets = global_post_index.buckets;
-    
-    // Double the size
-    global_post_index.size = old_size * 2;
-    global_post_index.buckets = (PostStateNode**)safe_zalloc(global_post_index.size * sizeof(PostStateNode*));
-    global_post_index.count = 0; // Will be recounted during rehashing
-    
-    printf("[INDEX] Resizing hashmap from %d to %d buckets...\n", old_size, global_post_index.size);
-    
-    // Rehash all existing entries
-    for (int i = 0; i < old_size; i++) {
-        PostStateNode *curr = old_buckets[i];
-        while (curr) {
-            PostStateNode *next = curr->next;
-            
-            // Recalculate hash with new size
-            unsigned long new_idx = hash_int(curr->post_id, global_post_index.size);
-            
-            // Insert at new position
-            curr->next = global_post_index.buckets[new_idx];
-            global_post_index.buckets[new_idx] = curr;
-            global_post_index.count++;
-            
-            curr = next;
-        }
-    }
-    
-    // Free old bucket array (nodes were moved, not freed)
-    free(old_buckets);
-    printf("[INDEX] Resize complete. %d posts rehashed.\n", global_post_index.count);
-}
-```
-
-#### Ricostruzione dello Stato dal Ledger (Event Sourcing)
-
-All'avvio del nodo, le hash map vengono **ricostruite** scorrendo l'intera blockchain. Questo pattern è noto come **Event Sourcing** (`rebuild_state_from_chain()`)
-
-#### Creazione del blocco genesi con chiavi hardcodate da `keygen.c`
-```c
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include "wwyl_crypto.h" 
-
-int main() {
-    char my_priv_key[128];
-    char my_pub_key[256];
-
-    printf("[*] Generazione chiavi Genesi usando la lib wwyl_crypto\n");
-    generate_keypair(my_priv_key, my_pub_key);
-
-    printf("\n=== COPIA E INCOLLA IN wwyl_config.h ===\n\n");
-    
-    printf("// Chiavi Genesi generate il %s\n", __DATE__);
-    printf("#define GENESIS_PRIV_KEY \"%s\"\n", my_priv_key);
-    printf("#define GENESIS_PUB_KEY  \"%s\"\n", my_pub_key);
-
-    return 0;
-}
-```
+Sfide Implementative Risolte
+ * OpenSSL 3.0 Moderno: Abbandono delle vecchie API EC_KEY in favore dell'interfaccia EVP (Envelope), gestendo manualmente la costruzione delle chiavi via OSSL_PARAM_BLD.
+ * Gestione DER vs Raw: OpenSSL restituisce firme in formato binario ASN.1 a lunghezza variabile. Ho scritto un parser (d2i_ECDSA_SIG) per estrarre i numeri puri R e S e convertirli in una stringa hex a lunghezza fissa, essenziale per la struttura del blocco.
+🎮 Game Theory & Economia (Tokenomics)
+Il sistema economico è progettato per essere a somma zero tra i partecipanti, con un meccanismo inflattivo controllato solo per i creatori di valore.
+1. Pay-to-Act (Skin in the Game)
+Ogni azione ha un costo per prevenire lo spam:
+ * Postare: Costa 5 Token. Questi token finiscono nel "Piatto" del post.
+ * Votare: Costa 2 Token. Anche questi finiscono nel "Piatto".
+2. Il Piatto (The Pool)
+Il PostState mantiene un accumulatore pull (il piatto).
+Piatto = (CostoPost) + (N_Voti * CostoVoto)
+3. La Redistribuzione (The Payout)
+Alla chiusura del post (Finalize):
+ * Si determina la maggioranza (Like vs Dislike).
+ * I Vincitori: Chi ha votato con la maggioranza si spartisce l'intero piatto.
+ * Gli Sconfitti: Chi ha votato contro perde la puntata.
+ * L'Autore: Non vince soldi dal piatto (quelli sono per i curatori), ma...
+4. La Streak (Reputazione Esponenziale)
+L'incentivo per l'autore è la Streak.
+Se il post viene approvato (Like > Dislike):
+ * Current_Streak aumenta di 1.
+ * Il protocollo conia (minta) nuovi token pari al valore della streak.
+   * Esempio: Al 5° post consecutivo di successo, l'autore riceve 5 token appena coniati.
+     Se il post viene rifiutato:
+ * La Streak torna a 0. Nessun premio.
+Nota: Esiste un Global Token Limit (Cap) per prevenire l'inflazione infinita.
+💾 Strutture Dati: Hashmap Custom
+Per gestire lo stato in RAM senza rallentamenti, ho implementato due Hashmap con gestione delle collisioni via concatenamento (Chaining).
+ * StateMap (Utenti): Chiave PubKey -> Valore UserState (Balance, Streak).
+ * PostMap (Post): Chiave PostID -> Valore PostState (Likes, Dislikes, Pool, Liste Commit/Reveal).
+Le mappe supportano il Resizing Dinamico: quando il carico supera il 75%, la dimensione dei bucket raddoppia e tutti i nodi vengono riallocati (Rehashing) per mantenere l'accesso a O(1).
+🚀 Guida all'Uso (CLI)
+Il progetto compila un nodo completo interattivo.
+Compilazione
+make
 
 ## 🗺 Roadmap di Sviluppo
 
