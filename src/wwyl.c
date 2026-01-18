@@ -303,91 +303,64 @@ void time_travel_hack(int post_id, int hours_forward) {
 
 int main() {
     // 1. Init
-    remove("wwyl_chain.dat"); // Standard C remove invece di system()
+    remove("wwyl_chain.dat"); 
     Block *blockchain = load_blockchain();
     Block *last = blockchain;
     while(last->next) last = last->next;
 
-    printf("\n=== WWYL SIMULATION: GAME THEORY TEST ===\n");
+    printf("\n=== TEST MODULO LOGIN SICURO ===\n");
 
-    // 2. Creazione Utenti
-    char alice_k[2][SIGNATURE_LEN], bob_k[2][SIGNATURE_LEN], charlie_k[2][SIGNATURE_LEN];
-    generate_keypair(alice_k[0], alice_k[1]);
-    generate_keypair(bob_k[0], bob_k[1]);
-    generate_keypair(charlie_k[0], charlie_k[1]);
+    // 2. Generiamo le chiavi
+    char alice_priv[SIGNATURE_LEN], alice_pub[SIGNATURE_LEN];
+    char hacker_priv[SIGNATURE_LEN], hacker_pub[SIGNATURE_LEN];
+    char ghost_priv[SIGNATURE_LEN], ghost_pub[SIGNATURE_LEN];
 
-    Block *b;
-    if((b = register_user(last, &(PayloadRegister){.username="Alice"}, alice_k[0], alice_k[1]))) last = b;
-    if((b = register_user(last, &(PayloadRegister){.username="Bob"}, bob_k[0], bob_k[1]))) last = b;
-    if((b = register_user(last, &(PayloadRegister){.username="Charlie"}, charlie_k[0], charlie_k[1]))) last = b;
+    generate_keypair(alice_priv, alice_pub);
+    generate_keypair(hacker_priv, hacker_pub);
+    generate_keypair(ghost_priv, ghost_pub); // Non lo registreremo
 
-    printf("\n--- SCENARIO 1: Alice posta, Bob e Charlie votano ---\n");
-    // Alice Posta (-5 Token)
-    b = user_post(last, &(PayloadPost){.content="Bitcoin > Gold"}, alice_k[0], alice_k[1]);
-    last = b;
-    int pid = b->index;
-    printf("📝 Alice ha postato (ID: %d). Bal: %d\n", pid, state_get_user(alice_k[1])->token_balance);
-
-    // Bob Vota LIKE (-2 Token)
-    PayloadReveal vote_bob = {.target_post_id=pid, .vote_value=1, .salt_secret="bob_secret"};
-    b = user_like(last, &vote_bob, bob_k[0], bob_k[1]);
+    // 3. Registriamo solo Alice
+    printf("\n--- [STEP 1] Registrazione ---\n");
+    Block *b = register_user(last, &(PayloadRegister){.username="Alice"}, alice_priv, alice_pub);
+    if(b) last = b;
+    
+    // (L'hacker si registra col suo account per avere chiavi valide, ma proverà a entrare come Alice)
+    b = register_user(last, &(PayloadRegister){.username="Hacker"}, hacker_priv, hacker_pub);
     if(b) last = b;
 
-    // Charlie Vota DISLIKE (-2 Token)
-    PayloadReveal vote_charlie = {.target_post_id=pid, .vote_value=-1, .salt_secret="charlie_secret"};
-    b = user_like(last, &vote_charlie, charlie_k[0], charlie_k[1]);
-    if(b) last = b;
+    // ------------------------------------------------------------------
+    // TEST 1: LOGIN CORRETTO
+    // ------------------------------------------------------------------
+    printf("\n--- [TEST 1] Alice prova a loggarsi (Chiavi Corrette) ---\n");
+    if (user_login(alice_priv, alice_pub)) {
+        printf(" -> Test 1 PASSATO (Login riuscito).\n");
+    } else {
+        printf(" -> Test 1 FALLITO (Dovrebbe riuscire).\n");
+    }
 
-    printf("\n--- TENTATIVO DI REVEAL PREMATURO ---\n");
-    // Bob prova a rivelare subito (Dovrebbe fallire)
-    b = user_reveal(last, &vote_bob, bob_k[0], bob_k[1]);
-    if(b == NULL) printf("✅ Reveal bloccato correttamente (attendere 24h).\n");
+    // ------------------------------------------------------------------
+    // TEST 2: LOGIN CON CHIAVE ERRATA (Identity Theft)
+    // ------------------------------------------------------------------
+    printf("\n--- [TEST 2] Hacker prova a loggarsi come Alice (Chiave Privata Errata) ---\n");
+    // L'hacker usa la PubKey di Alice (per dire "Sono Alice"), ma la SUA PrivKey per firmare.
+    // ecdsa_verify dovrebbe fallire perché la firma non corrisponde alla PubKey di Alice.
+    if (user_login(hacker_priv, alice_pub)) {
+        printf(" -> Test 2 FALLITO (Hacker è entrato!).\n");
+    } else {
+        printf(" -> Test 2 PASSATO (Accesso negato correttamente).\n");
+    }
 
-    printf("\n--- ⏰ 25 ORE DOPO... ---\n");
-    time_travel_hack(pid, 25); // Hack per testare la logica
+    // ------------------------------------------------------------------
+    // TEST 3: LOGIN UTENTE NON ESISTENTE
+    // ------------------------------------------------------------------
+    printf("\n--- [TEST 3] Ghost prova a loggarsi (Non Registrato) ---\n");
+    if (user_login(ghost_priv, ghost_pub)) {
+        printf(" -> Test 3 FALLITO (Ghost è entrato!).\n");
+    } else {
+        printf(" -> Test 3 PASSATO (Utente non trovato).\n");
+    }
 
-    // Ora rivelano
-    printf("🔓 Bob Rivela (Like)...\n");
-    b = user_reveal(last, &vote_bob, bob_k[0], bob_k[1]);
-    if(b) last = b;
-
-    printf("🔓 Charlie Rivela (Dislike)...\n");
-    b = user_reveal(last, &vote_charlie, charlie_k[0], charlie_k[1]);
-    if(b) last = b;
-
-    printf("\n--- FINALIZZAZIONE ---\n");
-    finalize_post_rewards(pid);
-    // Risultato atteso: 1 Like vs 1 Dislike. Pareggio o vittoria Like (dipende da >=).
-    // Se Like vince: Alice prende streak, Bob vince soldi. Charlie perde.
-
-    printf("\n--- SCENARIO 2: Streak Reset ---\n");
-    // Alice posta una cosa orribile
-    b = user_post(last, &(PayloadPost){.content="I love scams"}, alice_k[0], alice_k[1]);
-    last = b;
-    int pid2 = b->index;
-    
-    // Tutti odiano il post
-    PayloadReveal vote_hate = {.target_post_id=pid2, .vote_value=-1, .salt_secret="hate"};
-    user_like(last, &vote_hate, bob_k[0], bob_k[1]); // Bob dislike
-    last = last->next;
-    
-    time_travel_hack(pid2, 25);
-    
-    user_reveal(last, &vote_hate, bob_k[0], bob_k[1]);
-    last = last->next;
-    
-    finalize_post_rewards(pid2); // Qui Alice dovrebbe perdere la streak
-
-    // STATISTICHE FINALI
-    printf("\n=== CLASSIFICA FINALE ===\n");
-    UserState *sa = state_get_user(alice_k[1]);
-    UserState *sb = state_get_user(bob_k[1]);
-    UserState *sc = state_get_user(charlie_k[1]);
-
-    printf("Alice   | Bal: %2d | Streak: %d (Best: %d)\n", sa->token_balance, sa->current_streak, sa->best_streak);
-    printf("Bob     | Bal: %2d | (Vincitore seriale)\n", sb->token_balance);
-    printf("Charlie | Bal: %2d | (Sfortunato)\n", sc->token_balance);
-
+    // Cleanup
     save_blockchain(blockchain);
     state_cleanup();
     post_index_cleanup();
