@@ -371,7 +371,34 @@ void state_cleanup() {
     printf("[STATE] Memory cleaned up.\n");
 }
 
+// ---------------------------------------------------------
+// AUTENTICAZIONE UTENTE (Challenge-Response)
+// ---------------------------------------------------------
 int user_login(const char *privkey_hex, const char *pubkey_hex) {
-    (void)privkey_hex; (void)pubkey_hex; 
-    return 1; 
+    // Controllo Esistenza Utente
+    UserState *u = state_get_user(pubkey_hex);
+    if (!u) {
+        printf("[LOGIN] ❌ Accesso Negato: Utente non registrato.\n");
+        return 0;
+    }
+
+    // Sfida Crittografica (Challenge)
+    // Dovrebbe cambiare ogni volta
+    const char *challenge_msg = "WWYL_LOGIN_VERIFICATION_TOKEN";
+    char signature[SIGNATURE_LEN];
+    int is_valid = 0;
+
+    // Firma il messaggio con la PrivKey fornita
+    ecdsa_sign(privkey_hex, challenge_msg, signature);
+
+    // Verifica la firma contro la PubKey dell'utente
+    ecdsa_verify(pubkey_hex, challenge_msg, signature, &is_valid);
+
+    if (is_valid) {
+        printf("[LOGIN] ✅ Benvenuto @%s! (Identity Verified)\n", u->username);
+        return 1; // Success
+    } else {
+        printf("[LOGIN] ❌ Accesso Negato: Chiave Privata errata per questo utente!\n");
+        return 0; // Fail
+    }
 }
