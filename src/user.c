@@ -1,28 +1,24 @@
 #include "user.h"
+#include "post_state.h" 
+#include <string.h>
 
-// ---------------------------------------------------
-// VARIABILI GLOBALI
-// ---------------------------------------------------
+// --- VARIABILI GLOBALI ---
 StateMap world_state;
 RelationNode *relation_map[REL_MAP_SIZE];
+long long global_tokens_circulating = 0;
 
-// ---------------------------------------------------
-// INIZIALIZZAZIONE DELLO STATO
-// ---------------------------------------------------
-void state_init() {
-    world_state.size = INITIAL_MAP_SIZE;
-    world_state.count = 0;
-    world_state.buckets = (StateNode **)safe_zalloc(world_state.size * sizeof(StateNode *));
+// --- ECONOMY HELPERS ---
+int mineTokens(long long amount) {
+    if (global_tokens_circulating + amount > GLOBAL_TOKEN_LIMIT) return 0;
+    global_tokens_circulating += amount;
+    return 1;
 }
 
-// ---------------------------------------------------
-// HASH FUNCTIONS
-// ---------------------------------------------------
+// --- HASH FUNCTIONS ---
 unsigned long hash_djb2(const char *str, int map_size) {
     unsigned long hash = 5381;
     int c;
-    while ((c = *str++))
-        hash = ((hash << 5) + hash) + c; 
+    while ((c = *str++)) hash = ((hash << 5) + hash) + c; 
     return hash % map_size;
 }
 
@@ -33,9 +29,57 @@ unsigned long hash_rel(const char *key) {
     return hash % REL_MAP_SIZE;
 }
 
-// ---------------------------------------------------
-// STATE LOGIC (Follow Toggle)
-// ---------------------------------------------------
+// --- STATE MANAGEMENT ---
+void state_init() {
+    world_state.size = INITIAL_MAP_SIZE;
+    world_state.count = 0;
+    world_state.buckets = (StateNode **)safe_zalloc(world_state.size * sizeof(StateNode *));
+}
+
+UserState *state_get_user(const char *wallet_address) {
+    unsigned long index = hash_djb2(wallet_address, world_state.size);
+    StateNode *node = world_state.buckets[index];
+    while (node != NULL) {
+        if (strcmp(node->wallet_address, wallet_address) == 0) return &node->state;
+        node = node->next;
+    }
+    return NULL;
+}
+
+void state_update_user(const char *wallet_address, const UserState *new_state) {
+    unsigned long index = hash_djb2(wallet_address, world_state.size);
+    StateNode *node = world_state.buckets[index];
+    while(node) {
+        if(strcmp(node->wallet_address, wallet_address) == 0) {
+            node->state = *new_state; return;
+        }
+        node = node->next;
+    }
+    node = (StateNode *)safe_zalloc(sizeof(StateNode));
+    snprintf(node->wallet_address, SIGNATURE_LEN, "%s", wallet_address);
+    node->state = *new_state;
+    node->next = world_state.buckets[index];
+    world_state.buckets[index] = node;
+    world_state.count++;
+}
+
+void state_add_new_user(const char *wallet_address, const char *username, const char *bio, const char *pic) {
+    UserState u = {0};
+    snprintf(u.wallet_address, SIGNATURE_LEN, "%s", wallet_address);
+    if(username) snprintf(u.username, 32, "%s", username);
+    if(bio) snprintf(u.bio, 64, "%s", bio);
+    if(pic) snprintf(u.pic_url, 128, "%s", pic);
+    
+    if (mineTokens(WELCOME_BONUS)) {
+        u.token_balance = WELCOME_BONUS;
+    } else {
+        u.token_balance = 0; 
+    }
+    state_update_user(wallet_address, &u);
+    printf("[STATE] New User: %s (Bal: %d)\n", u.username, u.token_balance);
+}
+
+// --- FOLLOW LOGIC ---
 int state_check_follow_status(const char *follower, const char *target) {
     char key[2048];
     snprintf(key, sizeof(key), "%s:%s", follower, target);
@@ -57,7 +101,6 @@ void state_toggle_follow(const char *follower, const char *target) {
     UserState *u_follower = state_get_user(follower);
     UserState *u_target = state_get_user(target);
     
-    // 1. Cerchiamo se la relazione esiste (Unfollow)
     RelationNode *curr = relation_map[idx];
     RelationNode *prev = NULL;
     
@@ -75,7 +118,6 @@ void state_toggle_follow(const char *follower, const char *target) {
         curr = curr->next;
     }
 
-    // 2. Non trovata (Follow)
     RelationNode *node = (RelationNode*)safe_zalloc(sizeof(RelationNode));
     strcpy(node->key, key);
     node->next = relation_map[idx];
@@ -85,117 +127,226 @@ void state_toggle_follow(const char *follower, const char *target) {
     if (u_target) u_target->followers_count++;
 }
 
-// ---------------------------------------------------
-// RESIZE MAPPA
-// ---------------------------------------------------
-void state_resize() {
-    int old_size = world_state.size;
-    int new_size = old_size * 2;
+// --- LOGICA DI GIOCO (REWARDS & STREAK) ---
+void finalize_post_rewards(int post_id) {
+    PostState *p = post_index_get(post_id);
+    if (!p || p->finalized) return;
+
+    // Se Likes >= Dislikes, l'autore "Vince" l'approvazione (Streak)
+    int winning_vote = (p->likes >= p->dislikes) ? 1 : -1;
     
-    printf("[STATE] Resizing Map: %d -> %d buckets.\n", old_size, new_size);
-
-    StateNode **new_buckets = (StateNode **)safe_zalloc(new_size * sizeof(StateNode *));
-
-    for (int i = 0; i < old_size; i++) {
-        StateNode *curr = world_state.buckets[i];
-        while (curr != NULL) {
-            StateNode *next = curr->next;
-            unsigned long new_index = hash_djb2(curr->wallet_address, new_size);
-            curr->next = new_buckets[new_index];
-            new_buckets[new_index] = curr;
-            curr = next;
-        }
-    }
-
-    free(world_state.buckets);
-    world_state.buckets = new_buckets;
-    world_state.size = new_size;
-}
-
-// ---------------------------------------------------
-// API UTENTE / STATO
-// ---------------------------------------------------
-UserState *state_get_user(const char *wallet_address) {
-    unsigned long index = hash_djb2(wallet_address, world_state.size);
-    StateNode *node = world_state.buckets[index];
-
-    while (node != NULL) {
-        if (strcmp(node->wallet_address, wallet_address) == 0) {
-            return &node->state;
-        }
-        node = node->next;
-    }
-    return NULL;
-}
-
-void state_update_user(const char *wallet_address, const UserState *new_state) {
-    if ((float)world_state.count / world_state.size >= MAX_CAPACITY_LOAD) {
-        state_resize();
-    }
-
-    unsigned long index = hash_djb2(wallet_address, world_state.size);
-    StateNode *node = world_state.buckets[index];
-
-    while (node != NULL) {
-        if (strcmp(node->wallet_address, wallet_address) == 0) {
-            node->state = *new_state;
-            return;
-        }
-        node = node->next;
-    }
-
-    StateNode *new_node = (StateNode *)safe_zalloc(sizeof(StateNode));
-    snprintf(new_node->wallet_address, SIGNATURE_LEN, "%s", wallet_address);
-    new_node->state = *new_state;
-    new_node->next = world_state.buckets[index];
-    world_state.buckets[index] = new_node;
-    world_state.count++;
-}
-
-void state_add_new_user(const char *wallet_address, const char *username, const char *bio, const char *pic) {
-    UserState u = {0};
-    snprintf(u.wallet_address, SIGNATURE_LEN, "%s", wallet_address);
-    
-    // Copia dei dati anagrafici nello stato
-    if (username) snprintf(u.username, sizeof(u.username), "%s", username);
-    if (bio) snprintf(u.bio, sizeof(u.bio), "%s", bio);
-    if (pic) snprintf(u.pic_url, sizeof(u.pic_url), "%s", pic);
-
-    u.token_balance = WELCOME_BONUS; 
-    u.current_streak = 0;
-    u.best_streak = 0;
-    u.followers_count = 0;
-    u.following_count = 0;
-    u.total_posts = 0;
-    
-    state_update_user(wallet_address, &u);
-    printf("[STATE] New User State created: %s (@%s)\n", wallet_address, u.username);
-}
-
-// [FIX] Rimosso ogni riferimento a post_index_vote/add
-void rebuild_state_from_chain(Block *genesis) {
-    printf("[STATE] Rebuilding World State from Ledger...\n");
-    Block *curr = genesis;
-    int count = 0;
-
-    while(curr != NULL) {
-        if (curr->type == ACT_REGISTER_USER) {
-            state_add_new_user(
-                curr->sender_pubkey, 
-                curr->data.registration.username, 
-                curr->data.registration.bio, 
-                curr->data.registration.pic_url
-            );
-            count++;
-        }
-        if (curr->type == ACT_FOLLOW_USER) {
-            state_toggle_follow(curr->sender_pubkey, curr->data.follow.target_user_pubkey);
-        }
-        // [FIX] Qui c'era la logica dei post che causava errore. Rimossa.
-        
+    int winners_count = 0;
+    RevealNode *curr = p->reveals;
+    while(curr) {
+        if (curr->vote_value == winning_vote) winners_count++;
         curr = curr->next;
     }
-    printf("[STATE] State Rebuilt. %d users active.\n", count);
+
+    // 1. GESTIONE AUTORE (Streak Rewards)
+    UserState *author = state_get_user(p->author_pubkey);
+    if (author) {
+        if (winning_vote == 1) { 
+            // AUMENTO STREAK
+            author->current_streak++;
+            if (author->current_streak > author->best_streak) {
+                author->best_streak = author->current_streak;
+            }
+
+            // PAGAMENTO BONUS (1->1, 2->2, 3->3...)
+            // Questi soldi sono CONIATI (Minted), non presi dal pool
+            int bonus = author->current_streak;
+            if (mineTokens(bonus)) {
+                author->token_balance += bonus;
+                printf("🔥 [STREAK] Author Streak x%d! Minted +%d Tokens. (Bal: %d)\n", 
+                       author->current_streak, bonus, author->token_balance);
+            } else {
+                printf("⚠️ [STREAK] Global Token Limit Reached! No bonus for streak.\n");
+            }
+
+        } else {
+            // RESET STREAK
+            printf("❄️ [STREAK] Author Streak Reset (Was %d). Post rejected.\n", author->current_streak);
+            author->current_streak = 0;
+        }
+    }
+
+    // 2. GESTIONE PIATTO (Votanti)
+    if (winners_count > 0 && p->pull > 0) {
+        int reward = p->pull / winners_count;
+        curr = p->reveals;
+        while(curr) {
+            if (curr->vote_value == winning_vote) {
+                UserState *u = state_get_user(curr->voter_pubkey);
+                // Questi soldi sono RIDISTRIBUITI dal pool (già mintati)
+                if (u) {
+                    u->token_balance += reward;
+                    printf("💰 [PAYOUT] Voter %.8s... won %d tokens!\n", u->wallet_address, reward);
+                }
+            }
+            curr = curr->next;
+        }
+    } else {
+        printf("💀 [PAYOUT] No winners or empty pool. Tokens burned/locked.\n");
+    }
+
+    p->finalized = 1;
+    p->is_open = 0;
+    printf("[ECONOMY] Post #%d Finalized. Pool: %d -> Distributed.\n", post_id, p->pull);
+}
+
+// --- REBUILD ---
+void rebuild_state_from_chain(Block *genesis) {
+    printf("[STATE] Replaying Blockchain History...\n");
+    global_tokens_circulating = 0; 
+    
+    Block *curr = genesis;
+    while(curr != NULL) {
+        if (curr->type == ACT_REGISTER_USER) {
+            state_add_new_user(curr->sender_pubkey, curr->data.registration.username, NULL, NULL);
+        }
+        else if (curr->type == ACT_POST_CONTENT) {
+            post_index_add(curr->index, curr->sender_pubkey);
+            UserState *u = state_get_user(curr->sender_pubkey);
+            if(u && u->token_balance >= COSTO_POST) {
+                u->token_balance -= COSTO_POST;
+                PostState *p = post_index_get(curr->index);
+                if(p) {
+                    p->pull += COSTO_POST;
+                    p->created_at = curr->timestamp; 
+                }
+            }
+        }
+        else if (curr->type == ACT_VOTE_COMMIT) {
+            int pid = curr->data.commit.target_post_id;
+            post_register_commit(pid, curr->sender_pubkey, curr->data.commit.vote_hash);
+            UserState *u = state_get_user(curr->sender_pubkey);
+            if(u && u->token_balance >= COSTO_VOTO) {
+                u->token_balance -= COSTO_VOTO;
+                PostState *p = post_index_get(pid);
+                if(p) p->pull += COSTO_VOTO;
+            }
+        }
+        else if (curr->type == ACT_VOTE_REVEAL) {
+            int pid = curr->data.reveal.target_post_id;
+            post_register_reveal(pid, curr->sender_pubkey, curr->data.reveal.vote_value);
+        }
+        else if (curr->type == ACT_FOLLOW_USER) {
+            state_toggle_follow(curr->sender_pubkey, curr->data.follow.target_user_pubkey);
+        }
+        curr = curr->next;
+    }
+    printf("[STATE] Replay Complete.\n");
+}
+
+int check24hrs(time_t post_timestamp, time_t current_time) {
+    double diff = difftime(current_time, post_timestamp);
+    return (diff >= 0 && diff <= 86400);
+}
+
+// Hash senza timestamp (per test)
+char *hashVote(int post_id, int vote_val, const char *salt, const char *pubkey_hex) {
+    char combined[1024]; 
+    snprintf(combined, sizeof(combined), "%d:%d:%s:%s", 
+             post_id, vote_val, salt, pubkey_hex);
+    char *hash_output = (char *)safe_zalloc(HASH_LEN);
+    sha256_hash(combined, strlen(combined), hash_output);
+    return hash_output;
+}
+
+// --- AZIONI MINING ---
+
+Block *register_user(Block *prev, const void *payload, const char *priv, const char *pub) {
+    if (state_get_user(pub)) return NULL;
+    Block *b = mine_new_block(prev, ACT_REGISTER_USER, payload, pub, priv);
+    if(b) {
+        const PayloadRegister *reg = (const PayloadRegister*)payload;
+        state_add_new_user(pub, reg->username, reg->bio, reg->pic_url);
+    }
+    return b;
+}
+
+Block *user_post(Block *prev, const void *payload, const char *priv, const char *pub) {
+    UserState *u = state_get_user(pub);
+    if (!u || u->token_balance < COSTO_POST) {
+        printf("[ECONOMY] ❌ Fondi insufficienti per postare (Hai %d, serve %d).\n", u ? u->token_balance : 0, COSTO_POST);
+        return NULL;
+    }
+    Block *b = mine_new_block(prev, ACT_POST_CONTENT, payload, pub, priv);
+    if (b) {
+        u->token_balance -= COSTO_POST;
+        post_index_add(b->index, pub);
+        PostState *p = post_index_get(b->index);
+        if(p) {
+            p->pull += COSTO_POST;
+            p->created_at = b->timestamp;
+        }
+    }
+    return b;
+}
+
+Block *user_like(Block *prev, const void *payload, const char *priv, const char *pub) {
+    UserState *u = state_get_user(pub);
+    if (!u || u->token_balance < COSTO_VOTO) {
+        printf("[ECONOMY] ❌ Fondi insufficienti per votare.\n");
+        return NULL;
+    }
+    
+    const PayloadReveal *raw = (const PayloadReveal *)payload; 
+    PostState *post = post_index_get(raw->target_post_id);
+    if (!post) { printf("Post non trovato.\n"); return NULL; }
+
+    if (!check24hrs(post->created_at, time(NULL))) {
+        printf("[TIME] ⏳ Tempo scaduto per votare (Commit phase ended).\n");
+        return NULL;
+    }
+
+    PayloadCommit c_data = {0};
+    c_data.target_post_id = raw->target_post_id;
+    // Hash senza timestamp
+    char *h = hashVote(raw->target_post_id, raw->vote_value, raw->salt_secret, pub);
+    snprintf(c_data.vote_hash, HASH_LEN, "%s", h);
+    
+    Block *b = mine_new_block(prev, ACT_VOTE_COMMIT, &c_data, pub, priv);
+    if (b) {
+        u->token_balance -= COSTO_VOTO;
+        post->pull += COSTO_VOTO;
+        post_register_commit(raw->target_post_id, pub, h);
+    }
+    free(h);
+    return b;
+}
+
+Block *user_reveal(Block *prev, const void *payload, const char *priv, const char *pub) {
+    const PayloadReveal *raw = (const PayloadReveal *)payload;
+    PostState *post = post_index_get(raw->target_post_id);
+    if (!post) return NULL;
+
+    if (check24hrs(post->created_at, time(NULL))) {
+        printf("[TIME] ⏳ Troppo presto per rivelare! Le scommesse sono ancora aperte.\n");
+        return NULL;
+    }
+
+    char *h = hashVote(raw->target_post_id, raw->vote_value, raw->salt_secret, pub);
+    if (!post_verify_commit(raw->target_post_id, pub, h)) {
+        printf("[REVEAL] ❌ Hash mismatch! Stai mentendo sul tuo voto originale.\n");
+        free(h);
+        return NULL;
+    }
+    free(h);
+
+    Block *b = mine_new_block(prev, ACT_VOTE_REVEAL, payload, pub, priv);
+    if (b) {
+        post_register_reveal(raw->target_post_id, pub, raw->vote_value);
+    }
+    return b;
+}
+
+Block *user_follow(Block *prev, const void *payload, const char *priv, const char *pub) {
+    return mine_new_block(prev, ACT_FOLLOW_USER, payload, pub, priv);
+}
+
+Block *user_comment(Block *prev, const void *payload, const char *priv, const char *pub) {
+    return mine_new_block(prev, ACT_POST_COMMENT, payload, pub, priv);
 }
 
 void state_cleanup() {
@@ -220,132 +371,7 @@ void state_cleanup() {
     printf("[STATE] Memory cleaned up.\n");
 }
 
-// ---------------------------------------------------
-// FUNZIONI BLOCCO UTENTE
-// ---------------------------------------------------
-
-Block *register_user(Block *prev_block, const void *payload, const char *privkey_hex, const char *pubkey_hex) {
-    if (state_get_user(pubkey_hex) != NULL) {
-        printf("[USER] Utente già registrato (Map Check).\n");
-        return NULL;
-    }
-
-    const PayloadRegister *input = (const PayloadRegister *)payload;
-    PayloadRegister reg_data;
-    memset(&reg_data, 0, sizeof(PayloadRegister));
-
-    snprintf(reg_data.username, sizeof(reg_data.username), "%s", input->username);
-    snprintf(reg_data.bio, sizeof(reg_data.bio), "%s", input->bio);
-    snprintf(reg_data.pic_url, sizeof(reg_data.pic_url), "%s", input->pic_url);
-
-    printf("[USER] Mining registration block for: %s\n", reg_data.username);
-
-    Block *new_block = mine_new_block(prev_block, ACT_REGISTER_USER, &reg_data, pubkey_hex, privkey_hex);
-
-    if (new_block) {
-        state_add_new_user(pubkey_hex, reg_data.username, reg_data.bio, reg_data.pic_url);
-    }
-    return new_block;
-}
-
 int user_login(const char *privkey_hex, const char *pubkey_hex) {
-    const char *test_message = "LOGIN_VERIFICATION";
-    char test_signature[SIGNATURE_LEN];
-    int is_crypto_valid = 0;
-
-    ecdsa_sign(privkey_hex, test_message, test_signature);
-    ecdsa_verify(pubkey_hex, test_message, test_signature, &is_crypto_valid);
-
-    if (!is_crypto_valid) {
-        printf("[LOGIN] Chiavi non corrispondenti!\n");
-        return 0;
-    }
-
-    UserState *u = state_get_user(pubkey_hex);
-    if (u == NULL) {
-        printf("[LOGIN] Chiavi valide, ma utente non trovato nello Stato.\n");
-        return 0;
-    }
-
-    printf("[LOGIN] Benvenuto %s! Balance: %d Token.\n", u->username, u->token_balance);
-    return 1;
-}
-
-Block *user_follow(Block *prev_block, const void *payload, const char *privkey_hex, const char *pubkey_hex) {
-    const PayloadFollow *input = (const PayloadFollow*)payload;
-    
-    if (!state_get_user(input->target_user_pubkey)) {
-        printf("[FOLLOW] Errore: Target inesistente.\n");
-        return NULL;
-    }
-    
-    if (strcmp(input->target_user_pubkey, pubkey_hex) == 0) {
-        printf("[FOLLOW] Errore: Auto-follow non permesso.\n");
-        return NULL;
-    }
-
-    PayloadFollow follow_data;
-    memset(&follow_data, 0, sizeof(PayloadFollow));
-    snprintf(follow_data.target_user_pubkey, sizeof(follow_data.target_user_pubkey), "%s", input->target_user_pubkey);
-
-    Block *new_block = mine_new_block(prev_block, ACT_FOLLOW_USER, &follow_data, pubkey_hex, privkey_hex);
-
-    int is_following = state_check_follow_status(pubkey_hex, follow_data.target_user_pubkey);
-    if (new_block) {
-        if (is_following) {
-            state_toggle_follow(pubkey_hex, follow_data.target_user_pubkey);
-            printf("[FOLLOW] Success! Status: UNFOLLOWED\n");
-        } else {
-            state_toggle_follow(pubkey_hex, follow_data.target_user_pubkey);
-            printf("[FOLLOW] Success! Status: FOLLOWING\n");
-        }
-    }
-
-    return new_block;
-}
-
-Block *user_post(Block *prev_block, const void *payload, const char *privkey_hex, const char *pubkey_hex) {
-    if (!state_get_user(pubkey_hex)) {return NULL;}
-    
-    post_index_add(prev_block->index + 1, pubkey_hex);
-
-    const PayloadPost *input = (const PayloadPost *)payload;
-    PayloadPost post_data;
-    memset(&post_data, 0, sizeof(PayloadPost));
-
-    snprintf(post_data.content, sizeof(post_data.content), "%s", input->content);
-
-    printf("[USER] Mining post content block.\n");
-
-    Block *new_block = mine_new_block(prev_block, ACT_POST_CONTENT, &post_data, pubkey_hex, privkey_hex);
-
-    if (new_block) {
-        UserState *u = state_get_user(pubkey_hex);
-        if (u) {
-            u->total_posts += 1;
-        }
-    }
-    return new_block;
-}
-
-Block *user_comment(Block *prev_block, const void *payload, const char *privkey_hex, const char *pubkey_hex) {
-    if (!state_get_user(pubkey_hex)) {return NULL;}
-    
-    const PayloadComment *input = (const PayloadComment *)payload;
-    PayloadComment comment_data;
-    memset(&comment_data, 0, sizeof(PayloadComment));
-
-    comment_data.target_post_id = input->target_post_id;
-    snprintf(comment_data.content, sizeof(comment_data.content), "%s", input->content);
-
-    if (!post_index_exists(comment_data.target_post_id) || !post_index_author(comment_data.target_post_id)) {
-        printf("[USER] Errore: Post target per il commento non esistente.\n");
-        return NULL;
-    }
-
-    printf("[USER] Mining comment block.\n");
-
-    Block *new_block = mine_new_block(prev_block, ACT_POST_COMMENT, &comment_data, pubkey_hex, privkey_hex);
-
-    return new_block;
+    (void)privkey_hex; (void)pubkey_hex; 
+    return 1; 
 }

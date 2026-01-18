@@ -224,8 +224,8 @@ int main() {
 
 ### Fase 3: Logica di Gioco (🚧 In Corso)
 - [x] Motore di calcolo dello Stato (Replay del Ledger in RAM).
-- [ ] Gestione delle Streak esponenziali.
-- [ ] Implementazione del timer 24h per il Commit-Reveal.
+- [x] Gestione delle Streak esponenziali.
+- [x] Implementazione del timer 24h per il Commit-Reveal.
 
 ### Fase 4: Networking (Prossimamente)
 - [ ] Architettura Client-Server su Socket TCP.

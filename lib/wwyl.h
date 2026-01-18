@@ -11,6 +11,13 @@
 #define MAX_NAME_LEN 32
 #define INITIAL_POST_MAP_SIZE 128
 
+// --- ECONOMIA ---
+#define COSTO_VOTO 2
+#define COSTO_POST 4
+#define WELCOME_BONUS 20
+#define GLOBAL_TOKEN_LIMIT 200000 
+#define MAX_CAPACITY_LOAD 0.75
+
 // --- TIPI DI AZIONE ---
 typedef enum {
     ACT_REGISTER_USER = 0, 
@@ -21,7 +28,7 @@ typedef enum {
     ACT_FOLLOW_USER = 5    
 } ActionType;
 
-// --- STRUTTURE PAYLOAD ---
+// --- STRUTTURE PAYLOAD (Dati su Disco) ---
 typedef struct {
     char username[32]; 
     char bio[64];      
@@ -74,10 +81,9 @@ typedef struct Block {
     struct Block *next; 
 } Block;
 
-// --- STRUTTURA STATO UTENTE (Aggiornata!) ---
+// --- STRUTTURA STATO UTENTE (RAM) ---
 typedef struct {
     char wallet_address[SIGNATURE_LEN];
-    // NUOVI CAMPI AGGIUNTI
     char username[32];
     char bio[64];
     char pic_url[128];
@@ -90,7 +96,40 @@ typedef struct {
     int total_posts;
 } UserState;
 
-// === PROTOTIPI ===
+// --- STRUTTURE POST STATE (RAM) ---
+
+// Nodo per i voti segreti (Commit)
+typedef struct CommitNode {
+    char voter_pubkey[SIGNATURE_LEN];
+    char vote_hash[HASH_LEN];
+    struct CommitNode *next;
+} CommitNode;
+
+// Nodo per i voti svelati (Reveal)
+typedef struct RevealNode {
+    char voter_pubkey[SIGNATURE_LEN];
+    int vote_value;
+    struct RevealNode *next;
+} RevealNode;
+
+// Stato Mutabile del Post
+typedef struct {
+    int post_id;
+    char author_pubkey[SIGNATURE_LEN];
+    
+    int likes;
+    int dislikes;
+    
+    CommitNode *commits; // Lista chi ha committato
+    RevealNode *reveals; // Lista chi ha rivelato
+    
+    int pull;       // Il piatto (Token)
+    int is_open;    // Scommessa aperta
+    int finalized;  // 1 se pagato
+    time_t created_at;
+} PostState;
+
+// --- PROTOTIPI GLOBALI ---
 Block* initialize_blockchain(void);
 void print_block(const Block *block);
 Block *mine_new_block(Block *prev_block, ActionType type, const void *payload_data, const char *sender_pubkey, const char *sender_privkey);
@@ -98,44 +137,5 @@ int integrity_check(Block *prev, Block *curr);
 void serialize_block_content(const Block *block, char *buffer, size_t size);
 void save_blockchain(Block *genesis);
 Block *load_blockchain();
-
-// Stato Mutabile del Post (in RAM)
-typedef struct {
-    int post_id;
-    char author_pubkey[SIGNATURE_LEN];
-    
-    // Contatori per la Game Theory
-    int likes;
-    int dislikes;
-    
-    // Stato della scommessa
-    int is_open;       // 1 = Voting Active, 0 = Closed/Payout
-    time_t created_at;
-} PostState;
-
-// Nodo della Hashmap
-typedef struct PostStateNode {
-    int post_id; // Chiave (Intero invece di stringa!)
-    PostState state;
-    struct PostStateNode *next;
-} PostStateNode;
-
-// Hashmap specifica per i Post
-typedef struct {
-    PostStateNode **buckets;
-    int size;
-    int count;
-} PostMap;
-
-extern PostMap global_post_index;
-
-// API
-void post_index_init();
-void post_index_add(int post_id, const char *author);
-void post_index_vote(int post_id, int vote_val); // +1 Like, -1 Dislike
-PostState *post_index_get(int post_id);
-void post_index_cleanup();
-int post_index_exists(int post_id);
-char *post_index_author(int post_id);
 
 #endif
