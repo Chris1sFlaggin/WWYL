@@ -301,6 +301,29 @@ void time_travel_hack(int post_id, int hours_forward) {
     }
 }
 
+#include "wwyl.h"
+#include "utils.h"
+#include "wwyl_crypto.h"
+#include "user.h"
+#include "post_state.h"
+
+// [FIX MEMORY LEAK] Funzione per liberare la lista concatenata
+void free_blockchain(Block *genesis) {
+    Block *curr = genesis;
+    while (curr != NULL) {
+        Block *next = curr->next; // Salviamo il prossimo prima di distruggere il corrente
+        free(curr);
+        curr = next;
+    }
+    printf("[MEM] Blockchain memory freed successfully.\n");
+}
+
+// Helper per pulire chiavi sensibili (Security Best Practice)
+void secure_memzero(void *ptr, size_t size) {
+    volatile unsigned char *p = ptr;
+    while (size--) *p++ = 0;
+}
+
 int main() {
     // 1. Init
     remove("wwyl_chain.dat"); 
@@ -308,62 +331,56 @@ int main() {
     Block *last = blockchain;
     while(last->next) last = last->next;
 
-    printf("\n=== TEST MODULO LOGIN SICURO ===\n");
+    printf("\n=== TEST MODULO LOGIN SICURO (LEAK CHECK) ===\n");
 
-    // 2. Generiamo le chiavi
     char alice_priv[SIGNATURE_LEN], alice_pub[SIGNATURE_LEN];
     char hacker_priv[SIGNATURE_LEN], hacker_pub[SIGNATURE_LEN];
     char ghost_priv[SIGNATURE_LEN], ghost_pub[SIGNATURE_LEN];
 
     generate_keypair(alice_priv, alice_pub);
     generate_keypair(hacker_priv, hacker_pub);
-    generate_keypair(ghost_priv, ghost_pub); // Non lo registreremo
+    generate_keypair(ghost_priv, ghost_pub);
 
-    // 3. Registriamo solo Alice
     printf("\n--- [STEP 1] Registrazione ---\n");
     Block *b = register_user(last, &(PayloadRegister){.username="Alice"}, alice_priv, alice_pub);
     if(b) last = b;
     
-    // (L'hacker si registra col suo account per avere chiavi valide, ma proverà a entrare come Alice)
     b = register_user(last, &(PayloadRegister){.username="Hacker"}, hacker_priv, hacker_pub);
     if(b) last = b;
 
-    // ------------------------------------------------------------------
-    // TEST 1: LOGIN CORRETTO
-    // ------------------------------------------------------------------
-    printf("\n--- [TEST 1] Alice prova a loggarsi (Chiavi Corrette) ---\n");
-    if (user_login(alice_priv, alice_pub)) {
-        printf(" -> Test 1 PASSATO (Login riuscito).\n");
-    } else {
-        printf(" -> Test 1 FALLITO (Dovrebbe riuscire).\n");
-    }
+    // --- TEST LOGIN ---
+    printf("\n--- [TEST 1] Alice Login ---\n");
+    if (user_login(alice_priv, alice_pub)) printf(" -> PASSATO\n");
+    else printf(" -> FALLITO\n");
 
-    // ------------------------------------------------------------------
-    // TEST 2: LOGIN CON CHIAVE ERRATA (Identity Theft)
-    // ------------------------------------------------------------------
-    printf("\n--- [TEST 2] Hacker prova a loggarsi come Alice (Chiave Privata Errata) ---\n");
-    // L'hacker usa la PubKey di Alice (per dire "Sono Alice"), ma la SUA PrivKey per firmare.
-    // ecdsa_verify dovrebbe fallire perché la firma non corrisponde alla PubKey di Alice.
-    if (user_login(hacker_priv, alice_pub)) {
-        printf(" -> Test 2 FALLITO (Hacker è entrato!).\n");
-    } else {
-        printf(" -> Test 2 PASSATO (Accesso negato correttamente).\n");
-    }
+    printf("\n--- [TEST 2] Hacker Login ---\n");
+    if (user_login(hacker_priv, alice_pub)) printf(" -> FALLITO\n");
+    else printf(" -> PASSATO\n");
 
-    // ------------------------------------------------------------------
-    // TEST 3: LOGIN UTENTE NON ESISTENTE
-    // ------------------------------------------------------------------
-    printf("\n--- [TEST 3] Ghost prova a loggarsi (Non Registrato) ---\n");
-    if (user_login(ghost_priv, ghost_pub)) {
-        printf(" -> Test 3 FALLITO (Ghost è entrato!).\n");
-    } else {
-        printf(" -> Test 3 PASSATO (Utente non trovato).\n");
-    }
+    printf("\n--- [TEST 3] Ghost Login ---\n");
+    if (user_login(ghost_priv, ghost_pub)) printf(" -> FALLITO\n");
+    else printf(" -> PASSATO\n");
 
-    // Cleanup
+    // Salvataggio
     save_blockchain(blockchain);
+
+    // --- CLEANUP CRITICO (Fix Leak & Security) ---
+    
+    // 1. Liberiamo la Blockchain [FIX VALGRIND]
+    free_blockchain(blockchain);
+    
+    // 2. Liberiamo gli indici in RAM
     state_cleanup();
     post_index_cleanup();
-    EVP_cleanup();
+    
+    // 3. Puliamo OpenSSL
+    EVP_cleanup(); // (Opzionale su OpenSSL 3+, ma buona prassi)
+
+    // 4. Puliamo le chiavi private dallo stack [FIX SECURITY]
+    secure_memzero(alice_priv, SIGNATURE_LEN);
+    secure_memzero(hacker_priv, SIGNATURE_LEN);
+    secure_memzero(ghost_priv, SIGNATURE_LEN);
+
+    printf("[SEC] Sensitive keys wiped from memory.\n");
     return 0;
 }
