@@ -301,13 +301,6 @@ void time_travel_hack(int post_id, int hours_forward) {
     }
 }
 
-#include "wwyl.h"
-#include "utils.h"
-#include "wwyl_crypto.h"
-#include "user.h"
-#include "post_state.h"
-
-// [FIX MEMORY LEAK] Funzione per liberare la lista concatenata
 void free_blockchain(Block *genesis) {
     Block *curr = genesis;
     while (curr != NULL) {
