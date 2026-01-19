@@ -1,9 +1,12 @@
 #ifndef USER_H
 #define USER_H
 
+#define _GNU_SOURCE  // Add this at the top
+
 #include "wwyl.h"
 #include "utils.h"
 #include "wwyl_crypto.h"
+#include "map.h"
 
 // Configurazione Hashmap
 #define STATE_MAP_SIZE 1024 
@@ -28,7 +31,7 @@ typedef struct RelationNode {
     struct RelationNode *next;
 } RelationNode;
 
-extern StateMap world_state;
+extern HashMap *world_state;
 
 // --- API STATE ---
 void state_init();

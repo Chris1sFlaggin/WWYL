@@ -2,6 +2,7 @@
 #define POST_STATE_H
 
 #include "wwyl.h"
+#include "map.h"
 
 // Struttura Nodo Hashmap Post
 typedef struct PostStateNode {
@@ -16,7 +17,7 @@ typedef struct {
     int count;
 } PostMap;
 
-extern PostMap global_post_index;
+extern HashMap *global_post_index;
 
 // API Indice
 void post_index_init();

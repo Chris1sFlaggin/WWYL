@@ -18,6 +18,8 @@
 #define GLOBAL_TOKEN_LIMIT 200000 
 #define MAX_CAPACITY_LOAD 0.75
 
+#define WALLET_FILE "wwyl.wallet"
+
 // --- TIPI DI AZIONE ---
 typedef enum {
     ACT_REGISTER_USER = 0, 
@@ -95,6 +97,18 @@ typedef struct {
     int following_count;
     int total_posts;
 } UserState;
+
+typedef struct {
+    char username[32];
+    char priv[SIGNATURE_LEN];
+    char pub[SIGNATURE_LEN];
+    int registered; // 1 se l'utente è già registrato sulla blockchain
+} WalletEntry;
+
+typedef struct {
+    WalletEntry entries[10]; // Supportiamo fino a 10 profili locali
+    int count;
+} WalletStore;
 
 // --- STRUTTURE POST STATE (RAM) ---
 

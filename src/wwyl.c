@@ -5,6 +5,37 @@
 #include "user.h"
 #include "post_state.h"
 
+WalletStore global_wallet;
+int current_user_idx = -1;
+
+// --- PERSISTENZA WALLET ---
+void save_wallet_to_disk() {
+    FILE *f = fopen(WALLET_FILE, "wb");
+    if (!f) {
+        printf("[WALLET] ⚠️ Impossibile salvare il wallet su disco.\n");
+        return;
+    }
+    fwrite(&global_wallet, sizeof(WalletStore), 1, f);
+    fclose(f);
+    printf("[WALLET] Chiavi salvate in '%s'.\n", WALLET_FILE);
+}
+
+void load_wallet_from_disk() {
+    FILE *f = fopen(WALLET_FILE, "rb");
+    if (!f) {
+        printf("[WALLET] Nessun file wallet trovato. Creane uno nuovo.\n");
+        global_wallet.count = 0;
+        return;
+    }
+    if (fread(&global_wallet, sizeof(WalletStore), 1, f) != 1) {
+        printf("[WALLET] Errore lettura wallet o file vuoto.\n");
+        global_wallet.count = 0;
+    } else {
+        printf("[WALLET] Caricate %d identità da disco.\n", global_wallet.count);
+    }
+    fclose(f);
+}
+
 // ---------------------------------------------------------
 // OTTIENI ID BLOCCO
 // ---------------------------------------------------------
@@ -317,63 +348,243 @@ void secure_memzero(void *ptr, size_t size) {
     while (size--) *p++ = 0;
 }
 
+void print_cli() {
+    printf("\n=== WWYL NODE CLI ===\n");
+    if (current_user_idx >= 0) {
+        // Recuperiamo lo stato fresco dalla blockchain per mostrare il saldo reale
+        UserState *u = state_get_user(global_wallet.entries[current_user_idx].pub);
+        printf("👤 Utente: %s\n", global_wallet.entries[current_user_idx].username);
+        printf("💰 Saldo: %d | 🔥 Streak: %d\n", u ? u->token_balance : 0, u ? u->current_streak : 0);
+        printf("🔑 PubKey: %.16s...\n", global_wallet.entries[current_user_idx].pub);
+    } else {
+        printf("👤 Utente: OSPITE (Login necessario)\n");
+    }
+    printf("---------------------\n");
+    printf("[1] 🔑 Crea Nuova Identità (Keygen)\n");
+    printf("[2] 📝 Registra Utente su Blockchain (Bonus 10 Token)\n");
+    printf("[3] 👤 Login (Cambia Utente)\n");
+    printf("[4] 📢 Posta Contenuto (Costo: %d)\n", COSTO_POST);
+    printf("[5] 🗳️ Vota Post (Commit) (Costo: %d)\n", COSTO_VOTO);
+    printf("[6] 🔓 Rivela Voto (Reveal)\n");
+    printf("[7] 🏁 Finalizza Post (Distribuisci Premi)\n");
+    printf("[8] 📊 Mostra Stato Globale\n");
+    printf("[9] ⏰ [DEBUG] Time Travel (-25h)\n");
+    printf("[0] 💾 Esci e Salva Tutto\n");
+    printf("> ");
+}
+
 int main() {
-    // 1. Init
-    remove("wwyl_chain.dat"); 
+    // 1. Caricamento Blockchain (Ledger Pubblico)
     Block *blockchain = load_blockchain();
     Block *last = blockchain;
     while(last->next) last = last->next;
 
-    printf("\n=== TEST MODULO LOGIN SICURO (LEAK CHECK) ===\n");
+    // 2. Caricamento Wallet (Chiavi Private Locali)
+    load_wallet_from_disk();
 
-    char alice_priv[SIGNATURE_LEN], alice_pub[SIGNATURE_LEN];
-    char hacker_priv[SIGNATURE_LEN], hacker_pub[SIGNATURE_LEN];
-    char ghost_priv[SIGNATURE_LEN], ghost_pub[SIGNATURE_LEN];
+    int choice;
+    char buffer[MAX_CONTENT_LEN];
+    int target_id, vote_val;
 
-    generate_keypair(alice_priv, alice_pub);
-    generate_keypair(hacker_priv, hacker_pub);
-    generate_keypair(ghost_priv, ghost_pub);
+    while(1) {
+        print_cli();
+        if (scanf("%d", &choice) != 1) { while(getchar() != '\n'); continue; }
+        getchar(); // Consuma newline
 
-    printf("\n--- [STEP 1] Registrazione ---\n");
-    Block *b = register_user(last, &(PayloadRegister){.username="Alice"}, alice_priv, alice_pub);
-    if(b) last = b;
-    
-    b = register_user(last, &(PayloadRegister){.username="Hacker"}, hacker_priv, hacker_pub);
-    if(b) last = b;
+        switch(choice) {
+            case 1: { // KEYGEN
+                if (global_wallet.count >= 10) { printf("Wallet pieno (max 10)!\n"); break; }
+                
+                WalletEntry *w = &global_wallet.entries[global_wallet.count];
+                
+                printf("Inserisci Username locale: ");
+                if (fgets(w->username, sizeof(w->username), stdin) == NULL) {
+                    printf("Errore input.\n"); break;
+                }
+                w->username[strcspn(w->username, "\n")] = 0;
+                
+                generate_keypair(w->priv, w->pub);
+                w->registered = 0;
+                
+                // Auto-login
+                current_user_idx = global_wallet.count;
+                global_wallet.count++;
+                
+                printf("🔑 Chiavi generate! Ricordati di registrarti [2].\n");
+                save_wallet_to_disk(); // Salvataggio automatico
+                break;
+            }
 
-    // --- TEST LOGIN ---
-    printf("\n--- [TEST 1] Alice Login ---\n");
-    if (user_login(alice_priv, alice_pub)) printf(" -> PASSATO\n");
-    else printf(" -> FALLITO\n");
+            case 2: { // REGISTER
+                if (current_user_idx < 0) { printf("Devi prima creare un'identità o fare login.\n"); break; }
+                WalletEntry *w = &global_wallet.entries[current_user_idx];
+                
+                if (state_get_user(w->pub)) {
+                    printf("⚠️ Utente già registrato sulla blockchain.\n");
+                    w->registered = 1;
+                    break;
+                }
 
-    printf("\n--- [TEST 2] Hacker Login ---\n");
-    if (user_login(hacker_priv, alice_pub)) printf(" -> FALLITO\n");
-    else printf(" -> PASSATO\n");
+                PayloadRegister reg;
+                snprintf(reg.username, 32, "%s", w->username);
+                snprintf(reg.bio, 64, "CLI User");
+                snprintf(reg.pic_url, 128, "default.png");
 
-    printf("\n--- [TEST 3] Ghost Login ---\n");
-    if (user_login(ghost_priv, ghost_pub)) printf(" -> FALLITO\n");
-    else printf(" -> PASSATO\n");
+                Block *b = register_user(last, &reg, w->priv, w->pub);
+                if (b) {
+                    last = b;
+                    w->registered = 1;
+                    printf("✅ Registrazione confermata nel blocco #%d\n", b->index);
+                    save_wallet_to_disk(); // Aggiorna lo stato "registered" su disco
+                }
+                break;
+            }
 
-    // Salvataggio
-    save_blockchain(blockchain);
+            case 3: { // LOGIN
+                printf("\n--- PORTAFOGLIO LOCALE ---\n");
+                for(int i=0; i<global_wallet.count; i++) {
+                    printf("[%d] %s %s\n", i, global_wallet.entries[i].username, 
+                           global_wallet.entries[i].registered ? "✅" : "❌");
+                }
+                printf("Seleziona ID: ");
+                int id;
+                if (scanf("%d", &id) != 1) {
+                    printf("Input non valido.\n");
+                    while(getchar() != '\n');
+                    break;
+                }
+                if (id >= 0 && id < global_wallet.count) {
+                    // Verifica Crittografica (Anti-Spoofing locale)
+                    if (user_login(global_wallet.entries[id].priv, global_wallet.entries[id].pub)) {
+                        current_user_idx = id;
+                    }
+                } else {
+                    printf("ID non valido.\n");
+                }
+                break;
+            }
 
-    // --- CLEANUP CRITICO (Fix Leak & Security) ---
-    
-    // 1. Liberiamo la Blockchain [FIX VALGRIND]
-    free_blockchain(blockchain);
-    
-    // 2. Liberiamo gli indici in RAM
-    state_cleanup();
-    post_index_cleanup();
-    
-    // 3. Puliamo OpenSSL
-    EVP_cleanup(); // (Opzionale su OpenSSL 3+, ma buona prassi)
+            case 4: { // POST
+                if (current_user_idx < 0) break;
+                printf("Contenuto del post: ");
+                if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
+                    printf("Errore input.\n"); break;
+                }
+                buffer[strcspn(buffer, "\n")] = 0;
 
-    // 4. Puliamo le chiavi private dallo stack [FIX SECURITY]
-    secure_memzero(alice_priv, SIGNATURE_LEN);
-    secure_memzero(hacker_priv, SIGNATURE_LEN);
-    secure_memzero(ghost_priv, SIGNATURE_LEN);
+                WalletEntry *w = &global_wallet.entries[current_user_idx];
+                PayloadPost p;
+                snprintf(p.content, MAX_CONTENT_LEN, "%s", buffer);
+                
+                Block *b = user_post(last, &p, w->priv, w->pub);
+                if (b) {
+                    last = b;
+                    printf("📝 Post pubblicato! ID: %d\n", b->index);
+                }
+                break;
+            }
+            
+            case 5: { // VOTE
+                if (current_user_idx < 0) break;
+                printf("ID Post: ");
+                if (scanf("%d", &target_id) != 1) {
+                    printf("Input non valido.\n");
+                    while(getchar() != '\n');
+                    break;
+                }
+                printf("Voto (1=Like, -1=Dislike): ");
+                if (scanf("%d", &vote_val) != 1) {
+                    printf("Input non valido.\n");
+                    while(getchar() != '\n');
+                    break;
+                }
+                printf("Salt Segreto: "); getchar(); 
+                if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
+                    printf("Errore input.\n"); break;
+                }
+                buffer[strcspn(buffer, "\n")] = 0;
+                // Limit buffer to 31 chars to prevent truncation
+                buffer[31] = '\0';
+                WalletEntry *w = &global_wallet.entries[current_user_idx];
+                PayloadReveal rev = {.target_post_id=target_id, .vote_value=vote_val};
+                snprintf(rev.salt_secret, sizeof(rev.salt_secret), "%.31s", buffer);
+                Block *b = user_like(last, &rev, w->priv, w->pub);
+                if (b) last = b;
+                break;
+           }
+           case 6: { // REVEAL
+                if (current_user_idx < 0) break;
+                printf("ID Post: ");
+                if (scanf("%d", &target_id) != 1) {
+                    printf("Input non valido.\n");
+                    while(getchar() != '\n');
+                    break;
+                }
+                printf("Voto Originale: ");
+                if (scanf("%d", &vote_val) != 1) {
+                    printf("Input non valido.\n");
+                    while(getchar() != '\n');
+                    break;
+                }
+                printf("Salt Originale: "); getchar(); 
+                if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
+                    printf("Errore input.\n"); break;
+                }
+                buffer[strcspn(buffer, "\n")] = 0;
+                // Limit buffer to 31 chars to prevent truncation
+                buffer[31] = '\0';
+                WalletEntry *w = &global_wallet.entries[current_user_idx];
+                PayloadReveal rev = {.target_post_id=target_id, .vote_value=vote_val};
+                snprintf(rev.salt_secret, sizeof(rev.salt_secret), "%.31s", buffer);
+                Block *b = user_reveal(last, &rev, w->priv, w->pub);
+                if (b) last = b;
+                break;
+           }
+            case 7: { // FINALIZE
+                printf("ID Post: ");
+                if (scanf("%d", &target_id) != 1) {
+                    printf("Input non valido.\n");
+                    while(getchar() != '\n');
+                    break;
+                }
+                finalize_post_rewards(target_id);
+                break;
+            }
+            case 8: { // STATUS
+                 printf("\n--- UTENTI NELLA BLOCKCHAIN ---\n");
+                 // Qui iteriamo sul wallet locale per vedere i saldi dei nostri utenti
+                 for(int i=0; i<global_wallet.count; i++) {
+                     UserState *u = state_get_user(global_wallet.entries[i].pub);
+                     if(u) printf("@%-10s | Bal: %3d | Streak: %d\n", u->username, u->token_balance, u->current_streak);
+                 }
+                 break;
+            }
+            case 9: { // HACK
+                printf("ID Post: ");
+                if (scanf("%d", &target_id) != 1) {
+                    printf("Input non valido.\n");
+                    while(getchar() != '\n');
+                    break;
+                }
+                time_travel_hack(target_id, 25);
+                break;
+            }
 
-    printf("[SEC] Sensitive keys wiped from memory.\n");
-    return 0;
+            case 0: // EXIT
+                save_blockchain(blockchain); // Salva Ledger
+                save_wallet_to_disk();       // Salva Chiavi
+                
+                // Cleanup Memoria
+                free_blockchain(blockchain);
+                state_cleanup();
+                post_index_cleanup();
+                EVP_cleanup();
+                
+                // Pulisce le chiavi in RAM prima di uscire (Security)
+                secure_memzero(&global_wallet, sizeof(WalletStore));
+                
+                printf("👋 Bye!\n");
+                return 0;
+        }
+    }
 }

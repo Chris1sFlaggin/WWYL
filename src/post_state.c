@@ -1,47 +1,70 @@
 #include "post_state.h"
-#include "utils.h" 
+#include "utils.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h> 
 
-PostMap global_post_index;
+HashMap *global_post_index = NULL;
 
-unsigned long hash_int(int key, int size) { return key % size; }
+// --- DISTRUTTORE CUSTOM PER LA MAPPA ---
+// Questa funzione viene chiamata automaticamente da map_destroy per ogni post
+void free_post_state_wrapper(void *data) {
+    PostState *p = (PostState*)data;
+    if (!p) return;
 
-void post_index_init() {
-    global_post_index.size = INITIAL_POST_MAP_SIZE;
-    global_post_index.count = 0;
-    global_post_index.buckets = (PostStateNode**)safe_zalloc(global_post_index.size * sizeof(PostStateNode*));
+    // 1. Libera la lista dei Commit
+    CommitNode *c = p->commits;
+    while (c) {
+        CommitNode *temp = c;
+        c = c->next;
+        free(temp);
+    }
+
+    // 2. Libera la lista dei Reveal
+    RevealNode *r = p->reveals;
+    while (r) {
+        RevealNode *temp = r;
+        r = r->next;
+        free(temp);
+    }
+
+    // 3. Libera la struttura principale
+    free(p);
 }
 
-void post_index_add(int post_id, const char *author) {
-    unsigned long idx = hash_int(post_id, global_post_index.size);
-    PostStateNode *node = (PostStateNode*)safe_zalloc(sizeof(PostStateNode));
-    
-    node->state.post_id = post_id;
-    snprintf(node->state.author_pubkey, SIGNATURE_LEN, "%s", author);
-    node->state.likes = 0;
-    node->state.dislikes = 0;
-    node->state.commits = NULL; 
-    node->state.reveals = NULL;
-    node->state.pull = 0;       
-    node->state.is_open = 1;
-    node->state.finalized = 0;
-    node->state.created_at = time(NULL);
+// --- INIT ---
+void post_index_init() {
+    // Configurazione Mappa:
+    // Key: (void*)int (ID Post) -> Nessuna free necessaria (NULL)
+    // Val: PostState* -> Usiamo il wrapper custom per pulire le liste!
+    global_post_index = map_create(INITIAL_POST_MAP_SIZE, hash_int_direct, cmp_int_direct, NULL, free_post_state_wrapper);
+}
 
-    node->next = global_post_index.buckets[idx];
-    global_post_index.buckets[idx] = node;
-    global_post_index.count++;
+// --- CLEANUP ---
+void post_index_cleanup() {
+    // Ora basta chiamare map_destroy e lei chiamerà free_post_state_wrapper per ogni elemento
+    if (global_post_index) {
+        map_destroy(global_post_index);
+        global_post_index = NULL;
+    }
+}
+
+// --- LOGICA AGGIUNTA/GET ---
+void post_index_add(int post_id, const char *author) {
+    PostState *p = safe_zalloc(sizeof(PostState));
+    p->post_id = post_id;
+    snprintf(p->author_pubkey, SIGNATURE_LEN, "%s", author);
+    p->is_open = 1;
+    p->created_at = time(NULL);
+    
+    // Cast dell'int a void* per usarlo come chiave
+    map_put(global_post_index, (void*)(uintptr_t)post_id, p);
 }
 
 PostState *post_index_get(int post_id) {
-    unsigned long idx = hash_int(post_id, global_post_index.size);
-    PostStateNode *curr = global_post_index.buckets[idx];
-    while (curr) {
-        if (curr->state.post_id == post_id) return &curr->state;
-        curr = curr->next;
-    }
-    return NULL;
+    if (!global_post_index) return NULL;
+    return (PostState *)map_get(global_post_index, (void*)(uintptr_t)post_id);
 }
 
 int post_index_exists(int post_id) {
@@ -53,17 +76,19 @@ char *post_index_author(int post_id) {
     return p ? p->author_pubkey : NULL;
 }
 
+// --- LOGICA VOTI ---
 void post_register_commit(int post_id, const char *voter, const char *hash) {
     PostState *p = post_index_get(post_id);
     if (!p) return;
 
+    // Check duplicati
     CommitNode *curr = p->commits;
     while(curr) {
         if (strcmp(curr->voter_pubkey, voter) == 0) return; 
         curr = curr->next;
     }
 
-    CommitNode *node = (CommitNode*)safe_zalloc(sizeof(CommitNode));
+    CommitNode *node = safe_zalloc(sizeof(CommitNode));
     snprintf(node->voter_pubkey, SIGNATURE_LEN, "%s", voter);
     snprintf(node->vote_hash, HASH_LEN, "%s", hash);
     node->next = p->commits;
@@ -91,26 +116,9 @@ void post_register_reveal(int post_id, const char *voter, int vote_val) {
     if (vote_val == 1) p->likes++;
     else if (vote_val == -1) p->dislikes++;
 
-    RevealNode *node = (RevealNode*)safe_zalloc(sizeof(RevealNode));
+    RevealNode *node = safe_zalloc(sizeof(RevealNode));
     snprintf(node->voter_pubkey, SIGNATURE_LEN, "%s", voter);
     node->vote_value = vote_val;
     node->next = p->reveals;
     p->reveals = node;
-}
-
-void post_index_cleanup() {
-    for(int i=0; i<global_post_index.size; i++) {
-        PostStateNode *curr = global_post_index.buckets[i];
-        while(curr) {
-            CommitNode *c = curr->state.commits;
-            while(c) { CommitNode *t = c; c = c->next; free(t); }
-            RevealNode *r = curr->state.reveals;
-            while(r) { RevealNode *t = r; r = r->next; free(t); }
-            
-            PostStateNode *tmp = curr;
-            curr = curr->next;
-            free(tmp);
-        }
-    }
-    free(global_post_index.buckets);
 }
