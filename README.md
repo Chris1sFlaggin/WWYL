@@ -291,7 +291,7 @@ Per verificare la sicurezza della memoria e l'assenza di leak, esegui il nodo tr
 
 ## Contributing
 
-* **🐛 [Report Issues**](https://github.com/chris1sflaggin/wwyl/issues): Submit bugs found or log feature requests for the `wwyl` project.
+* 🐛 **[Report Issues**](https://github.com/chris1sflaggin/wwyl/issues): Submit bugs found or log feature requests for the `wwyl` project.
 
 <details closed>
 <summary>Contributing Guidelines</summary>
