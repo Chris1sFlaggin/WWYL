@@ -128,8 +128,9 @@ Block *create_genesis_block() {
         fprintf(stderr, "[WARN] Genesis Public Key troncata!\n");
     }
 
-    const char *my_bio = "@Chris1sflaggin - Hello from the founder of WWYL!";
-    snprintf(block->data.post.content, MAX_CONTENT_LEN, "%s", my_bio);
+    snprintf(block->data.registration.username, sizeof(block->data.registration.username), "Chris1sflaggin");
+    snprintf(block->data.registration.bio, sizeof(block->data.registration.bio), "Hello from the founder of WWYL!");
+    snprintf(block->data.registration.pic_url, sizeof(block->data.registration.pic_url), "founder.png");
 
     char raw_data_buffer[2048];
     serialize_block_content(block, raw_data_buffer, sizeof(raw_data_buffer));
@@ -375,6 +376,7 @@ void print_cli() {
     printf("[7] 🏁 Finalizza Post (Distribuisci Premi)\n");
     printf("[8] 📊 Mostra Stato Globale\n");
     printf("[9] ⏰ [DEBUG] Time Travel (-25h)\n");
+    printf("[10] 👑 Importa GOD Wallet (Admin Only)\n"); 
     printf("[0] 💾 Esci e Salva Tutto\n");
     printf("> ");
 }
@@ -580,6 +582,31 @@ int main() {
                     break;
                 }
                 time_travel_hack(target_id, 25);
+                break;
+            }
+
+            case 10: { // IMPORT GOD WALLET
+                if (global_wallet.count >= 10) { 
+                    printf("Wallet pieno! Impossibile importare.\n"); 
+                    break; 
+                }
+                
+                WalletEntry *w = &global_wallet.entries[global_wallet.count];
+                
+                // Copiamo i dati hardcodati da wwyl_config.h
+                snprintf(w->username, 32, "THE_CREATOR");
+                snprintf(w->priv, SIGNATURE_LEN, "%s", GOD_PRIV_KEY);
+                snprintf(w->pub, SIGNATURE_LEN, "%s", GOD_PUB_KEY);
+                
+                // Il GOD wallet è GIA' registrato nel blocco genesi, quindi settiamo a 1
+                w->registered = 1; 
+                
+                // Selezioniamo subito questo utente
+                current_user_idx = global_wallet.count;
+                global_wallet.count++;
+                
+                save_wallet_to_disk();
+                printf("👑 Wallet GOD importato con successo! Sei loggato come Creator.\n");
                 break;
             }
 

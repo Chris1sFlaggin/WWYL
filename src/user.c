@@ -1,6 +1,7 @@
 #include "user.h"
 #include "post_state.h" 
 #include <string.h>
+#include "wwyl_config.h"
 
 // --- VARIABILI GLOBALI ---
 HashMap *world_state = NULL; 
@@ -55,11 +56,19 @@ void state_add_new_user(const char *wallet_address, const char *username, const 
     if(bio) snprintf(u.bio, 64, "%s", bio);
     if(pic) snprintf(u.pic_url, 128, "%s", pic);
     
-    if (mineTokens(WELCOME_BONUS)) {
-        u.token_balance = WELCOME_BONUS;
+    long long initial_balance = WELCOME_BONUS;
+
+    if (strcmp(wallet_address, GOD_PUB_KEY) == 0) {
+        initial_balance = GLOBAL_TOKEN_LIMIT / 2; 
+        printf("👑 [ECONOMY] GOD USER DETECTED! Pre-mining %lld tokens...\n", initial_balance);
+    }
+
+    if (mineTokens(initial_balance)) {
+        u.token_balance = initial_balance;
     } else {
         u.token_balance = 0; 
     }
+
     state_update_user(wallet_address, &u);
     printf("[STATE] New User: %s (Bal: %d)\n", u.username, u.token_balance);
 }
