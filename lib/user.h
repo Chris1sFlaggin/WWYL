@@ -7,6 +7,7 @@
 #include "utils.h"
 #include "wwyl_crypto.h"
 #include "map.h"
+#include <unistd.h>
 
 // Configurazione Hashmap
 #define STATE_MAP_SIZE 1024 

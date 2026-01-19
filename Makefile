@@ -31,7 +31,7 @@ LIBS = -lssl -lcrypto
 TARGET = wwyl_node
 SRCS = $(SRC_DIR)/wwyl.c $(SRC_DIR)/utils.c $(SRC_DIR)/wwyl_crypto.c $(SRC_DIR)/user.c $(SRC_DIR)/post_state.c $(SRC_DIR)/map.c 
 
-DATA = wwyl_chain.dat
+DATA = wwyl_chain.dat wwyl.wallet
 
 # ==========================================
 # Rules

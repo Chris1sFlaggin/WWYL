@@ -350,10 +350,16 @@ int user_login(const char *privkey_hex, const char *pubkey_hex) {
         printf("[LOGIN] ❌ Accesso Negato: Utente non registrato.\n");
         return 0;
     }
-    // Challenge mock per brevità, usare la versione full del tuo user.c se vuoi
-    time_t now = time(NULL) / 60; 
+    srand(time(NULL));
+    sleep(2);
+    time_t now = time(NULL) / (rand() % 100 + 1); 
     char challenge_msg[64];
-    snprintf(challenge_msg, sizeof(challenge_msg), "LOGIN_AUTH_%ld", now);
+    char *parolaRandom = getRandomWord(now);
+    for (int i = 0; i < 5; i++) {
+        now += rand()%1000;
+        strcat(parolaRandom, getRandomWord(now));
+    }
+    snprintf(challenge_msg, sizeof(challenge_msg), "%s", parolaRandom);
     char signature[SIGNATURE_LEN];
     int is_valid = 0;
     ecdsa_sign(privkey_hex, challenge_msg, signature);
