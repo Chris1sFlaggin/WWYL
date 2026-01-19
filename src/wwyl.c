@@ -92,6 +92,9 @@ void serialize_block_content(const Block *block, char *buffer, size_t size) {
             snprintf(payload_str, sizeof(payload_str), "%s",
                      block->data.follow.target_user_pubkey);
             break;
+        case ACT_POST_FINALIZE:
+            snprintf(payload_str, sizeof(payload_str), "%d", block->data.finalize.target_post_id);
+            break;
         default:
             snprintf(payload_str, sizeof(payload_str), "UNKNOWN");
             break;
@@ -205,6 +208,9 @@ Block *mine_new_block(Block *prev_block, ActionType type, const void *payload_da
         snprintf(new_block->data.registration.username, 32, "%s", ((PayloadRegister *)payload_data)->username);
         snprintf(new_block->data.registration.bio, 64, "%s", ((PayloadRegister *)payload_data)->bio);
         snprintf(new_block->data.registration.pic_url, 128, "%s", ((PayloadRegister *)payload_data)->pic_url);
+        break;
+    case ACT_POST_FINALIZE:
+        new_block->data.finalize.target_post_id = ((PayloadFinalize *)payload_data)->target_post_id;
         break;
     default:
         printf("[WARN] Unknown block type during mining.\n");
@@ -511,8 +517,8 @@ int main() {
                 Block *b = user_like(last, &rev, w->priv, w->pub);
                 if (b) last = b;
                 break;
-           }
-           case 6: { // REVEAL
+            }
+            case 6: { // REVEAL
                 if (current_user_idx < 0) break;
                 printf("ID Post: ");
                 if (scanf("%d", &target_id) != 1) {
@@ -539,15 +545,22 @@ int main() {
                 Block *b = user_reveal(last, &rev, w->priv, w->pub);
                 if (b) last = b;
                 break;
-           }
+            }
             case 7: { // FINALIZE
+                if (current_user_idx < 0) break;
                 printf("ID Post: ");
                 if (scanf("%d", &target_id) != 1) {
                     printf("Input non valido.\n");
                     while(getchar() != '\n');
                     break;
                 }
-                finalize_post_rewards(target_id);
+                // Creiamo payload
+                WalletEntry *w = &global_wallet.entries[current_user_idx];
+                PayloadFinalize fin = { .target_post_id = target_id };
+                
+                // Chiamiamo la funzione che mina il blocco
+                Block *b = user_finalize(last, &fin, w->priv, w->pub);
+                if (b) last = b;
                 break;
             }
             case 8: { // STATUS

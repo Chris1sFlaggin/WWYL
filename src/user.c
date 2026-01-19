@@ -158,6 +158,7 @@ void finalize_post_rewards(int post_id) {
 void rebuild_state_from_chain(Block *genesis) {
     printf("[STATE] Replaying Blockchain History...\n");
     global_tokens_circulating = 0; 
+    
     Block *curr = genesis;
     while(curr != NULL) {
         if (curr->type == ACT_REGISTER_USER) {
@@ -188,6 +189,11 @@ void rebuild_state_from_chain(Block *genesis) {
         }
         else if (curr->type == ACT_FOLLOW_USER) {
             state_toggle_follow(curr->sender_pubkey, curr->data.follow.target_user_pubkey);
+        }
+        // NUOVO: SE TROVIAMO UN BLOCCO DI FINALIZZAZIONE, DISTRIBUIAMO I PREMI!
+        else if (curr->type == ACT_POST_FINALIZE) {
+            int pid = curr->data.finalize.target_post_id;
+            finalize_post_rewards(pid);
         }
         curr = curr->next;
     }
@@ -366,4 +372,22 @@ int user_login(const char *privkey_hex, const char *pubkey_hex) {
     ecdsa_verify(pubkey_hex, challenge_msg, signature, &is_valid);
     if (is_valid) { printf("[LOGIN] ✅ Benvenuto @%s!\n", u->username); return 1; }
     else { printf("[LOGIN] ❌ Firma invalida.\n"); return 0; }
+}
+
+Block *user_finalize(Block *prev, const void *payload, const char *priv, const char *pub) {
+    const PayloadFinalize *req = (const PayloadFinalize*)payload;
+    
+    // Controlliamo se il post esiste e non è già chiuso
+    PostState *post = post_index_get(req->target_post_id);
+    if (!post) { printf("Post non trovato.\n"); return NULL; }
+    if (post->finalized) { printf("Post già finalizzato.\n"); return NULL; }
+
+    // Minamo il blocco
+    Block *b = mine_new_block(prev, ACT_POST_FINALIZE, payload, pub, priv);
+    
+    if (b) {
+        // Applichiamo subito l'effetto in RAM
+        finalize_post_rewards(req->target_post_id);
+    }
+    return b;
 }

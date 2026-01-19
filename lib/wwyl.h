@@ -27,7 +27,8 @@ typedef enum {
     ACT_POST_COMMENT = 2,  
     ACT_VOTE_COMMIT = 3,   
     ACT_VOTE_REVEAL = 4,   
-    ACT_FOLLOW_USER = 5    
+    ACT_FOLLOW_USER = 5,
+    ACT_POST_FINALIZE = 6
 } ActionType;
 
 // --- STRUTTURE PAYLOAD (Dati su Disco) ---
@@ -36,6 +37,10 @@ typedef struct {
     char bio[64];      
     char pic_url[128]; 
 } PayloadRegister;
+
+typedef struct {
+    int target_post_id;
+} PayloadFinalize;
 
 typedef struct {
     char content[MAX_CONTENT_LEN];
@@ -78,6 +83,7 @@ typedef struct Block {
         PayloadComment comment;
         PayloadFollow follow;
         PayloadRegister registration;
+        PayloadFinalize finalize;
     } data;
 
     struct Block *next; 
