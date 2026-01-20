@@ -8,6 +8,7 @@
 
 <em>Why Would You Lie: A Game-Theoretic Anarchist Decentralized Social Protocol.</em>
 
+[![wakatime](https://wakatime.com/badge/user/60eb27ee-c203-4f75-a0c4-7e15815a3a4d/project/c5c061d1-832c-4b2d-8a94-daacb7fd4ce5.svg)](https://wakatime.com/badge/user/60eb27ee-c203-4f75-a0c4-7e15815a3a4d/project/c5c061d1-832c-4b2d-8a94-daacb7fd4ce5)
 <img src="https://img.shields.io/badge/language-C11-00599C?style=for-the-badge&logo=c&logoColor=white" alt="Language">
 <img src="https://img.shields.io/github/license/chris1sflaggin/wwyl?style=flat-square&logo=opensourceinitiative&logoColor=white&color=FF4B4B" alt="license">
 <img src="https://img.shields.io/badge/status-Thesis_Prototype-orange?style=for-the-badge" alt="Status">
@@ -291,7 +292,7 @@ Per verificare la sicurezza della memoria e l'assenza di leak, esegui il nodo tr
 
 ## Contributing
 
-* **🐛 [Report Issues**](https://github.com/chris1sflaggin/wwyl/issues): Submit bugs found or log feature requests for the `wwyl` project.
+* 🐛 [**Report Issues**](https://github.com/chris1sflaggin/wwyl/issues): Submit bugs found or log feature requests for the `wwyl` project.
 
 <details closed>
 <summary>Contributing Guidelines</summary>
