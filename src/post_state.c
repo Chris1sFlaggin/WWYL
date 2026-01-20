@@ -29,7 +29,15 @@ void free_post_state_wrapper(void *data) {
         free(temp);
     }
 
-    // 3. Libera la struttura principale
+    // 3. Libera la lista dei Commenti
+    CommentNode *k = p->comments;
+    while (k) {
+        CommentNode *temp = k;
+        k = k->next;
+        free(temp);
+    }
+
+    // 4. Libera la struttura principale
     free(p);
 }
 
@@ -121,4 +129,32 @@ void post_register_reveal(int post_id, const char *voter, int vote_val) {
     node->vote_value = vote_val;
     node->next = p->reveals;
     p->reveals = node;
+}
+
+// Aggiungila alla fine del file src/post_state.c
+
+void post_register_comment(int post_id, const char *author, const char *content, time_t timestamp) {
+    PostState *p = post_index_get(post_id);
+    if (!p) return;
+
+    CommentNode *node = safe_zalloc(sizeof(CommentNode));
+    snprintf(node->author_pubkey, SIGNATURE_LEN, "%s", author);
+    snprintf(node->content, MAX_CONTENT_LEN, "%s", content);
+    node->timestamp = timestamp;
+    
+    // Inserimento in coda (per mantenere l'ordine cronologico) o in testa
+    // Qui facciamo inserimento in testa per semplicità (il più recente appare prima)
+    node->next = p->comments;
+    p->comments = node;
+    
+    // Se vuoi l'ordine cronologico (più vecchio prima), dovresti scorrere fino alla fine:
+    /*
+    if (!p->comments) {
+        p->comments = node;
+    } else {
+        CommentNode *curr = p->comments;
+        while(curr->next) curr = curr->next;
+        curr->next = node;
+    }
+    */
 }

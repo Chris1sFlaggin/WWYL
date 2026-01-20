@@ -355,6 +355,19 @@ void secure_memzero(void *ptr, size_t size) {
     while (size--) *p++ = 0;
 }
 
+// Esempio di snippet per stampare i commenti di un post
+void print_post_comments(int post_id) {
+    PostState *p = post_index_get(post_id);
+    if (!p) return;
+
+    printf("\n--- COMMENTI (%d) ---\n", post_id);
+    CommentNode *curr = p->comments;
+    while(curr) {
+        printf("@%.8s... dice: %s\n", curr->author_pubkey, curr->content);
+        curr = curr->next;
+    }
+}
+
 void print_cli() {
     printf("\n=== WWYL NODE CLI ===\n");
     if (current_user_idx >= 0) {
@@ -379,6 +392,7 @@ void print_cli() {
     printf("[10] 👑 Importa GOD Wallet (Admin Only)\n"); 
     printf("[11] Commenta su Post\n");
     printf("[12] Segui Utente\n");
+    printf("[13] Mostra Commenti di un Post\n");
     printf("[0] 💾 Esci e Salva Tutto\n");
     printf("> ");
 }
@@ -658,6 +672,16 @@ int main() {
                     last = b;
                     printf("➕ Ora segui l'utente con PubKey: %.16s...\n", buffer);
                 }
+                break;
+            }
+            case 13: { // PRINT COMMENTS
+                printf("ID Post per mostrare commenti: ");
+                if (scanf("%d", &target_id) != 1) {
+                    printf("Input non valido.\n");
+                    while(getchar() != '\n');
+                    break;
+                }
+                print_post_comments(target_id);
                 break;
             }
             case 0: // EXIT

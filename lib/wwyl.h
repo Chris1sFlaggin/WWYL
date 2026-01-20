@@ -132,6 +132,13 @@ typedef struct RevealNode {
     struct RevealNode *next;
 } RevealNode;
 
+typedef struct CommentNode {
+    char author_pubkey[SIGNATURE_LEN];
+    char content[MAX_CONTENT_LEN];
+    time_t timestamp;
+    struct CommentNode *next;
+} CommentNode;
+
 // Stato Mutabile del Post
 typedef struct {
     int post_id;
@@ -142,6 +149,7 @@ typedef struct {
     
     CommitNode *commits; // Lista chi ha committato
     RevealNode *reveals; // Lista chi ha rivelato
+    CommentNode *comments; // Lista commenti
     
     int pull;       // Il piatto (Token)
     int is_open;    // Scommessa aperta
