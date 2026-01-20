@@ -204,6 +204,11 @@ void rebuild_state_from_chain(Block *genesis) {
             int pid = curr->data.finalize.target_post_id;
             finalize_post_rewards(pid);
         }
+        else if (curr->type == ACT_POST_COMMENT) {
+            int pid = curr->data.comment.target_post_id;
+            // [NUOVO] Carica il commento in RAM
+            post_register_comment(pid, curr->sender_pubkey, curr->data.comment.content, curr->timestamp);
+       }
         curr = curr->next;
     }
     printf("[STATE] Replay Complete.\n");
@@ -334,8 +339,10 @@ Block *user_comment(Block *prev, const void *payload, const char *priv, const ch
 
     if (b) {
         printf("[COMMENT] 💬 Commento registrato sul blocco #%d.\n", b->index);
+        
+        const PayloadComment *req = (const PayloadComment*)payload;
+        post_register_comment(req->target_post_id, pub, req->content, b->timestamp);
     }
-
     return b;
 }
 
@@ -365,22 +372,42 @@ int user_login(const char *privkey_hex, const char *pubkey_hex) {
         printf("[LOGIN] ❌ Accesso Negato: Utente non registrato.\n");
         return 0;
     }
+
+    // --- FIX CRASH E BUFFER OVERFLOW ---
     srand(time(NULL));
-    sleep(2);
-    time_t now = time(NULL) / (rand() % 100 + 1); 
-    char challenge_msg[64];
-    char *parolaRandom = getRandomWord(now);
+    sleep(1); // Piccolo ritardo per variare il seed
+    
+    unsigned int now = (unsigned int)time(NULL);
+    char challenge_msg[512] = {0}; // Buffer statico sicuro e pulito
+
+    // Generiamo 5 parole casuali e le concateniamo nel buffer sicuro
     for (int i = 0; i < 5; i++) {
-        now += rand()%1000;
-        strcat(parolaRandom, getRandomWord(now));
+        now += (rand() % 1000) + 1; // Variamo il seed
+        char *temp_word = getRandomWord(now);
+        
+        // Concatenazione sicura
+        strncat(challenge_msg, temp_word, sizeof(challenge_msg) - strlen(challenge_msg) - 1);
+        
+        // FONDAMENTALE: Liberare la memoria allocata da strdup in getRandomWord
+        free(temp_word); 
     }
-    snprintf(challenge_msg, sizeof(challenge_msg), "%s", parolaRandom);
+
+    printf("[DEBUG] Challenge: %s\n", challenge_msg);
+
     char signature[SIGNATURE_LEN];
     int is_valid = 0;
+    
+    // Firma e Verifica
     ecdsa_sign(privkey_hex, challenge_msg, signature);
     ecdsa_verify(pubkey_hex, challenge_msg, signature, &is_valid);
-    if (is_valid) { printf("[LOGIN] ✅ Benvenuto @%s!\n", u->username); return 1; }
-    else { printf("[LOGIN] ❌ Firma invalida.\n"); return 0; }
+
+    if (is_valid) { 
+        printf("[LOGIN] ✅ Benvenuto @%s!\n", u->username); 
+        return 1; 
+    } else { 
+        printf("[LOGIN] ❌ Firma invalida.\n"); 
+        return 0; 
+    }
 }
 
 Block *user_finalize(Block *prev, const void *payload, const char *priv, const char *pub) {

@@ -31,5 +31,6 @@ char *post_index_author(int post_id);
 void post_register_commit(int post_id, const char *voter, const char *hash);
 int post_verify_commit(int post_id, const char *voter, const char *calculated_hash);
 void post_register_reveal(int post_id, const char *voter, int vote_val); 
+void post_register_comment(int post_id, const char *author, const char *content, time_t timestamp);
 
 #endif

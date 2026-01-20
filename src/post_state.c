@@ -36,11 +36,8 @@ void free_post_state_wrapper(void *data) {
         k = k->next;
         free(temp);
     }
-
-    // 4. Libera la struttura principale
     free(p);
 }
-
 // --- INIT ---
 void post_index_init() {
     // Configurazione Mappa:
@@ -131,8 +128,6 @@ void post_register_reveal(int post_id, const char *voter, int vote_val) {
     p->reveals = node;
 }
 
-// Aggiungila alla fine del file src/post_state.c
-
 void post_register_comment(int post_id, const char *author, const char *content, time_t timestamp) {
     PostState *p = post_index_get(post_id);
     if (!p) return;
@@ -142,19 +137,7 @@ void post_register_comment(int post_id, const char *author, const char *content,
     snprintf(node->content, MAX_CONTENT_LEN, "%s", content);
     node->timestamp = timestamp;
     
-    // Inserimento in coda (per mantenere l'ordine cronologico) o in testa
-    // Qui facciamo inserimento in testa per semplicità (il più recente appare prima)
+    // Inserimento in testa (LIFO - Il più recente appare per primo)
     node->next = p->comments;
     p->comments = node;
-    
-    // Se vuoi l'ordine cronologico (più vecchio prima), dovresti scorrere fino alla fine:
-    /*
-    if (!p->comments) {
-        p->comments = node;
-    } else {
-        CommentNode *curr = p->comments;
-        while(curr->next) curr = curr->next;
-        curr->next = node;
-    }
-    */
 }

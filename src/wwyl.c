@@ -375,7 +375,7 @@ void print_cli() {
         UserState *u = state_get_user(global_wallet.entries[current_user_idx].pub);
         printf("👤 Utente: %s\n", global_wallet.entries[current_user_idx].username);
         printf("💰 Saldo: %d | 🔥 Streak: %d\n", u ? u->token_balance : 0, u ? u->current_streak : 0);
-        printf("🔑 PubKey: %.16s...\n", global_wallet.entries[current_user_idx].pub);
+        printf("🔑 PubKey: %s...\n", global_wallet.entries[current_user_idx].pub);
     } else {
         printf("👤 Utente: OSPITE (Login necessario)\n");
     }
@@ -674,14 +674,36 @@ int main() {
                 }
                 break;
             }
-            case 13: { // PRINT COMMENTS
+            case 13: { // MOSTRA COMMENTI
                 printf("ID Post per mostrare commenti: ");
                 if (scanf("%d", &target_id) != 1) {
                     printf("Input non valido.\n");
                     while(getchar() != '\n');
                     break;
                 }
-                print_post_comments(target_id);
+                
+                PostState *p = post_index_get(target_id);
+                if (!p) {
+                    printf("❌ Post #%d non trovato.\n", target_id);
+                    break;
+                }
+
+                printf("\n--- COMMENTI SU POST #%d ---\n", target_id);
+                
+                CommentNode *curr = p->comments;
+                if (!curr) {
+                    printf("(Nessun commento presente)\n");
+                }
+                
+                while(curr) {
+                    // Recuperiamo l'username se possibile
+                    UserState *u = state_get_user(curr->author_pubkey);
+                    char *name = u ? u->username : "Unknown";
+                    
+                    printf("💬 @%s: %s\n", name, curr->content);
+                    curr = curr->next;
+                }
+                printf("----------------------------\n");
                 break;
             }
             case 0: // EXIT
