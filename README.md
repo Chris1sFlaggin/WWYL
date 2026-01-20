@@ -8,6 +8,7 @@
 
 <em>Why Would You Lie: A Game-Theoretic Anarchist Decentralized Social Protocol.</em>
 
+<img src="https://img.shields.io/wakatime/w/chris1sflaggin?style=for-the-badge&logo=wakatime&label=Coding%20Time" alt="WakaTime">
 <img src="https://img.shields.io/badge/language-C11-00599C?style=for-the-badge&logo=c&logoColor=white" alt="Language">
 <img src="https://img.shields.io/github/license/chris1sflaggin/wwyl?style=flat-square&logo=opensourceinitiative&logoColor=white&color=FF4B4B" alt="license">
 <img src="https://img.shields.io/badge/status-Thesis_Prototype-orange?style=for-the-badge" alt="Status">
