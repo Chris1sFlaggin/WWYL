@@ -377,6 +377,8 @@ void print_cli() {
     printf("[8] 📊 Mostra Stato Globale\n");
     printf("[9] ⏰ [DEBUG] Time Travel (-25h)\n");
     printf("[10] 👑 Importa GOD Wallet (Admin Only)\n"); 
+    printf("[11] Commenta su Post\n");
+    printf("[12] Segui Utente\n");
     printf("[0] 💾 Esci e Salva Tutto\n");
     printf("> ");
 }
@@ -609,7 +611,55 @@ int main() {
                 printf("👑 Wallet GOD importato con successo! Sei loggato come Creator.\n");
                 break;
             }
+            case 11: { // COMMENT
+                if (current_user_idx < 0) break;
+                printf("ID Post da commentare: ");
+                if (scanf("%d", &target_id) != 1) {
+                    printf("Input non valido.\n");
+                    while(getchar() != '\n');
+                    break;
+                }
+                getchar(); // Consuma newline
+                printf("Contenuto del commento: ");
+                if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
+                    printf("Errore input.\n"); break;
+                }
+                buffer[strcspn(buffer, "\n")] = 0;
 
+                WalletEntry *w = &global_wallet.entries[current_user_idx];
+                PayloadComment p;
+                p.target_post_id = target_id;
+                snprintf(p.content, MAX_CONTENT_LEN, "%s", buffer);
+                
+                Block *b = user_comment(last, &p, w->priv, w->pub);
+                if (b) {
+                    last = b;
+                    printf("💬 Commento pubblicato! ID: %d\n", b->index);
+                }
+                break;
+            }
+            case 12: { // FOLLOW
+                if (current_user_idx < 0) break;
+                printf("PubKey Utente da seguire: ");
+                if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
+                    printf("Errore input.\n"); break;
+                }
+                buffer[strcspn(buffer, "\n")] = 0;
+
+                WalletEntry *w = &global_wallet.entries[current_user_idx];
+                PayloadFollow p;
+                
+                // FIX WARNING: Usiamo "%.*s" per limitare esplicitamente la lettura
+                // Legge al massimo (SIGNATURE_LEN - 1) caratteri da buffer.
+                snprintf(p.target_user_pubkey, SIGNATURE_LEN, "%.*s", SIGNATURE_LEN - 1, buffer);
+                
+                Block *b = user_follow(last, &p, w->priv, w->pub);
+                if (b) {
+                    last = b;
+                    printf("➕ Ora segui l'utente con PubKey: %.16s...\n", buffer);
+                }
+                break;
+            }
             case 0: // EXIT
                 save_blockchain(blockchain); // Salva Ledger
                 save_wallet_to_disk();       // Salva Chiavi
