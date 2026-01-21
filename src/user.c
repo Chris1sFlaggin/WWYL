@@ -192,35 +192,58 @@ void finalize_post_rewards(int post_id) {
 // REBUILD STATE FROM CHAIN
 // -----------------------------------------------------------
 void rebuild_state_from_chain(Block *genesis) {
-    printf("[STATE] Replaying Blockchain History...\n");
+    printf("[STATE] 🔄 Replaying Blockchain History con Prezzi Dinamici...\n");
+    
+    // 1. Reset totale dell'economia
     global_tokens_circulating = 0; 
     
     Block *curr = genesis;
     while(curr != NULL) {
+        // Calcoliamo il moltiplicatore che c'era IN QUEL MOMENTO
+        // Basato sui token circolanti prima di processare questo blocco
+        float historical_mult = get_economy_multiplier();
+
         if (curr->type == ACT_REGISTER_USER) {
             PayloadRegister *reg = &curr->data.registration;
-    
+            // Se è il blocco genesi o una registrazione normale
             if (curr->index == 0) {
+                 // Nota: state_add_new_user aggiorna global_tokens_circulating
                 state_add_new_user(curr->sender_pubkey, reg->username, reg->bio, reg->pic_url);
-            } 
+            } else {
+                // Per utenti successivi al genesi
+                 state_add_new_user(curr->sender_pubkey, reg->username, reg->bio, reg->pic_url);
+            }
         }
         else if (curr->type == ACT_POST_CONTENT) {
             post_index_add(curr->index, curr->sender_pubkey);
             UserState *u = state_get_user(curr->sender_pubkey);
-            if(u && u->token_balance >= COSTO_POST) {
-                u->token_balance -= COSTO_POST;
+            
+            // Calcolo il costo storico!
+            int historical_cost = (int)(COSTO_POST * historical_mult);
+
+            if(u && u->token_balance >= historical_cost) {
+                u->token_balance -= historical_cost;
+                
                 PostState *p = post_index_get(curr->index);
-                if(p) { p->pull += COSTO_POST; p->created_at = curr->timestamp; }
+                if(p) { 
+                    p->pull += historical_cost; // Il pool cresce col prezzo pagato
+                    p->created_at = curr->timestamp; 
+                }
             }
         }
         else if (curr->type == ACT_VOTE_COMMIT) {
             int pid = curr->data.commit.target_post_id;
             post_register_commit(pid, curr->sender_pubkey, curr->data.commit.vote_hash);
             UserState *u = state_get_user(curr->sender_pubkey);
-            if(u && u->token_balance >= COSTO_VOTO) {
-                u->token_balance -= COSTO_VOTO;
+            
+            // Calcolo il costo storico!
+            int historical_cost = (int)(COSTO_VOTO * historical_mult);
+
+            if(u && u->token_balance >= historical_cost) {
+                u->token_balance -= historical_cost;
+                
                 PostState *p = post_index_get(pid);
-                if(p) p->pull += COSTO_VOTO;
+                if(p) p->pull += historical_cost;
             }
         }
         else if (curr->type == ACT_VOTE_REVEAL) {
@@ -230,29 +253,30 @@ void rebuild_state_from_chain(Block *genesis) {
         else if (curr->type == ACT_FOLLOW_USER) {
             state_toggle_follow(curr->sender_pubkey, curr->data.follow.target_user_pubkey);
         }
-        // NUOVO: SE TROVIAMO UN BLOCCO DI FINALIZZAZIONE, DISTRIBUIAMO I PREMI!
         else if (curr->type == ACT_POST_FINALIZE) {
             int pid = curr->data.finalize.target_post_id;
+            // Questa funzione al suo interno chiama mineTokens() per i bonus streak,
+            // quindi aggiorna global_tokens_circulating correttamente per i blocchi successivi.
             finalize_post_rewards(pid);
         }
         else if (curr->type == ACT_POST_COMMENT) {
             int pid = curr->data.comment.target_post_id;
-            // [NUOVO] Carica il commento in RAM
             post_register_comment(pid, curr->sender_pubkey, curr->data.comment.content, curr->timestamp);
        }
        else if (curr->type == ACT_TRANSFER) {
-        UserState *sender = state_get_user(curr->sender_pubkey);
-        UserState *receiver = state_get_user(curr->data.transfer.target_pubkey);
-        int amount = curr->data.transfer.amount;
-        
-        if (sender && receiver && sender->token_balance >= amount) {
-            sender->token_balance -= amount;
-            receiver->token_balance += amount;
+            UserState *sender = state_get_user(curr->sender_pubkey);
+            UserState *receiver = state_get_user(curr->data.transfer.target_pubkey);
+            int amount = curr->data.transfer.amount;
+            
+            if (sender && receiver && sender->token_balance >= amount) {
+                sender->token_balance -= amount;
+                receiver->token_balance += amount;
+            }
         }
-    }
+        
         curr = curr->next;
     }
-    printf("[STATE] Replay Complete.\n");
+    printf("[STATE] ✅ Replay Complete. Circulating Supply: %lld\n", global_tokens_circulating);
 }
 
 // ---------------------------------------------------------
@@ -297,16 +321,20 @@ Block *register_user(Block *prev, const void *payload, const char *priv, const c
 // ---------------------------------------------------------
 Block *user_post(Block *prev, const void *payload, const char *priv, const char *pub) {
     UserState *u = state_get_user(pub);
-    if (!u || u->token_balance < COSTO_POST) {
-        printf("[ECONOMY] ❌ Fondi insufficienti per postare.\n");
+    
+    int current_cost = (int)(COSTO_POST * get_economy_multiplier());
+    
+    if (!u || u->token_balance < current_cost) {
+        printf("[ECONOMY] ❌ Fondi insufficienti. Costo attuale: %d (Inflazione: %.2fx)\n", 
+               current_cost, get_economy_multiplier());
         return NULL;
     }
     Block *b = mine_new_block(prev, ACT_POST_CONTENT, payload, pub, priv);
     if (b) {
-        u->token_balance -= COSTO_POST;
+        u->token_balance -= current_cost;
         post_index_add(b->index, pub);
         PostState *p = post_index_get(b->index);
-        if(p) { p->pull += COSTO_POST; p->created_at = b->timestamp; }
+        if(p) { p->pull += current_cost; p->created_at = b->timestamp; }
     }
     return b;
 }
@@ -316,8 +344,12 @@ Block *user_post(Block *prev, const void *payload, const char *priv, const char 
 // ---------------------------------------------------------
 Block *user_like(Block *prev, const void *payload, const char *priv, const char *pub) {
     UserState *u = state_get_user(pub);
-    if (!u || u->token_balance < COSTO_VOTO) {
-        printf("[ECONOMY] ❌ Fondi insufficienti per votare.\n");
+    
+    int current_cost = (int)(COSTO_POST * get_economy_multiplier());
+    
+    if (!u || u->token_balance < current_cost) {
+        printf("[ECONOMY] ❌ Fondi insufficienti. Costo attuale: %d (Inflazione: %.2fx)\n", 
+               current_cost, get_economy_multiplier());
         return NULL;
     }
     const PayloadReveal *raw = (const PayloadReveal *)payload; 
@@ -332,8 +364,8 @@ Block *user_like(Block *prev, const void *payload, const char *priv, const char 
     
     Block *b = mine_new_block(prev, ACT_VOTE_COMMIT, &c_data, pub, priv);
     if (b) {
-        u->token_balance -= COSTO_VOTO;
-        post->pull += COSTO_VOTO;
+        u->token_balance -= current_cost;
+        post->pull += current_cost;
         post_register_commit(raw->target_post_id, pub, h);
     }
     free(h);
@@ -537,4 +569,46 @@ Block *user_transfer(Block *prev, const void *payload, const char *priv, const c
         printf("💸 Trasferimento completato! %d token da @%s a @%s.\n", req->amount, sender->username, receiver->username);
     }
     return b;
+}
+
+float get_economy_multiplier() {
+    // Se siamo all'inizio, costo base
+    if (global_tokens_circulating == 0) return 1.0;
+
+    // Calcolo: (Token Circolanti / Token Totali)
+    // Esempio: Se il 50% dei token sono fuori, il prezzo raddoppia (o aumenta secondo logica)
+    float scarcity_ratio = (float)global_tokens_circulating / (float)GLOBAL_TOKEN_LIMIT;
+    
+    // Formula: 1.0 + (Ratio * 4). 
+    // Se siamo al 0% -> 1x
+    // Se siamo al 50% -> 3x
+    // Se siamo al 100% -> 5x
+    float multiplier = 1.0 + (scarcity_ratio * 4.0); 
+    
+    return multiplier;
+}
+
+void buy_tokens_sim(const char *user_pubkey, int amount_tokens) {
+    UserState *u = state_get_user(user_pubkey);
+    UserState *god = state_get_user(GOD_PUB_KEY);
+
+    if (!u || !god) {
+        printf("❌ Errore critico: Wallet non trovati.\n");
+        return;
+    }
+
+    if (god->token_balance < amount_tokens) {
+        printf("❌ La Banca Centrale (GOD) ha finito i token! Mercato chiuso.\n");
+        return;
+    }
+
+    // Trasferimento Atomico (Simulato in RAM, poi andrebbe minato un blocco ACT_TRANSFER)
+    god->token_balance -= amount_tokens;
+    u->token_balance += amount_tokens;
+    
+    // Aggiorniamo il circolante (tecnicamente sono già "mintati" nel God wallet, 
+    // ma per la tua logica di scarsità potresti considerare "circolanti" solo quelli degli utenti)
+    global_tokens_circulating += amount_tokens; 
+
+    printf("✅ Transazione approvata! Hai ricevuto %d Token.\n", amount_tokens);
 }

@@ -468,6 +468,7 @@ void print_cli() {
     printf("[12] ➕ Segui Utente\n");
     printf("[13] 📖 Mostra Commenti di un Post\n");
     printf("[14] 🤝 Manda token ad un amico\n"); 
+    printf("[15] 💳 Acquista Token (Simulato)\n");
     printf("[0] 💾 Esci e Salva Tutto\n");
     printf("> ");
 }
@@ -815,6 +816,64 @@ int main() {
                 // Chiamata alla nuova funzione (che creeremo in user.c)
                 Block *b = user_transfer(last, &t, w->priv, w->pub);
                 if (b) last = b;
+                break;
+            }
+            case 15: { // BUY TOKENS (SIMULATION)
+                if (current_user_idx < 0) {
+                    printf("Devi fare login prima.\n");
+                    break;
+                }
+
+                float mult = get_economy_multiplier();
+                int price_10 = (int)(10 * COSTO_TOKEN_BASE * mult);
+                int price_50 = (int)(50 * COSTO_TOKEN_BASE * mult);
+                
+                printf("\n=== 🏦 WWYL EXCHANGE (DEX) ===\n");
+                printf("📊 Indice Scarsità Attuale: %.2fx\n", mult);
+                printf("💰 Token in Circolazione: %lld / %d\n", global_tokens_circulating, GLOBAL_TOKEN_LIMIT);
+                printf("-------------------------------\n");
+                printf("[1]  10 Token  → %d coin\n", price_10);
+                printf("[2]  50 Token  → %d coin\n", price_50);
+                printf("[3] 100 Token  → %d coin\n", (int)(100 * COSTO_TOKEN_BASE * mult));
+                printf("-------------------------------\n");
+
+                // SIMULAZIONE PAGAMENTO (Safe Input)
+                char cardNum[20]; // Stringa, non int!
+                char cvv[5];
+                int selection, amount = 0;
+
+                printf("Seleziona pacchetto (1-3): ");
+                if (scanf("%d", &selection) != 1) { while(getchar()!='\n'); break; }
+                getchar(); // Consuma newline
+
+                if (selection == 1) amount = 10;
+                else if (selection == 2) amount = 50;
+                else if (selection == 3) amount = 100;
+                else { printf("Selezione non valida.\n"); break; }
+
+                printf("\n--- GATEWAY DI PAGAMENTO SICURO ---\n");
+                printf("Numero Carta (XXXX-XXXX-XXXX-XXXX): ");
+                if (fgets(cardNum, sizeof(cardNum), stdin) == NULL) break;
+                cardNum[strcspn(cardNum, "\n")] = 0; // Rimuovi newline
+
+                // Controllo base lunghezza (Simulazione validazione)
+                if (strlen(cardNum) < 13) {
+                    printf("❌ Errore: Numero carta non valido.\n");
+                    break;
+                }
+
+                printf("CVV: ");
+                if (fgets(cvv, sizeof(cvv), stdin) == NULL) break;
+                
+                printf("Elaborazione pagamento in corso... ⏳\n");
+                sleep(1); // Suspense...
+
+                // Esegui acquisto
+                WalletEntry *w = &global_wallet.entries[current_user_idx];
+                buy_tokens_sim(w->pub, amount);
+                
+                // Salviamo lo stato del wallet su disco per sicurezza
+                save_wallet_to_disk();
                 break;
             }
             case 0: // EXIT

@@ -9,6 +9,9 @@
 #include "map.h"
 #include <unistd.h>
 
+#define COSTO_TOKEN_BASE 1 
+extern float global_inflation_multiplier; 
+
 // Configurazione Hashmap
 #define STATE_MAP_SIZE 1024 
 #define INITIAL_MAP_SIZE 16 
