@@ -53,6 +53,8 @@ Block *user_comment(Block *prev_block, const void *payload, const char *privkey_
 Block *user_like(Block *prev_block, const void *payload, const char *privkey_hex, const char *pubkey_hex);
 Block *user_reveal(Block *prev_block, const void *payload, const char *privkey_hex, const char *pubkey_hex);
 Block *user_finalize(Block *prev_block, const void *payload, const char *privkey_hex, const char *pubkey_hex);
+Block *user_transfer(Block *prev_block, const void *payload, const char *privkey_hex, const char *pubkey_hex);
+
 // --- ECONOMIA ---
 void finalize_post_rewards(int post_id);
 int mineTokens(long long amount);

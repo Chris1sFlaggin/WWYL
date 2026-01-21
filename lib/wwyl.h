@@ -14,7 +14,7 @@
 // --- ECONOMIA ---
 #define COSTO_VOTO 2
 #define COSTO_POST 4
-#define WELCOME_BONUS 20
+#define WELCOME_BONUS 10
 #define GLOBAL_TOKEN_LIMIT 200000 
 #define MAX_CAPACITY_LOAD 0.75
 
@@ -28,7 +28,8 @@ typedef enum {
     ACT_VOTE_COMMIT = 3,   
     ACT_VOTE_REVEAL = 4,   
     ACT_FOLLOW_USER = 5,
-    ACT_POST_FINALIZE = 6
+    ACT_POST_FINALIZE = 6,
+    ACT_TRANSFER = 7
 } ActionType;
 
 // --- STRUTTURE PAYLOAD (Dati su Disco) ---
@@ -37,6 +38,11 @@ typedef struct {
     char bio[64];      
     char pic_url[128]; 
 } PayloadRegister;
+
+typedef struct {
+    char target_pubkey[SIGNATURE_LEN];
+    int amount;
+} PayloadTransfer;
 
 typedef struct {
     int target_post_id;
@@ -84,6 +90,7 @@ typedef struct Block {
         PayloadFollow follow;
         PayloadRegister registration;
         PayloadFinalize finalize;
+        PayloadTransfer transfer;
     } data;
 
     struct Block *next; 

@@ -95,6 +95,11 @@ void serialize_block_content(const Block *block, char *buffer, size_t size) {
         case ACT_POST_FINALIZE:
             snprintf(payload_str, sizeof(payload_str), "%d", block->data.finalize.target_post_id);
             break;
+        case ACT_TRANSFER:
+            snprintf(payload_str, sizeof(payload_str), "%s:%d", 
+                     block->data.transfer.target_pubkey, 
+                     block->data.transfer.amount);
+            break;
         default:
             snprintf(payload_str, sizeof(payload_str), "UNKNOWN");
             break;
@@ -212,6 +217,10 @@ Block *mine_new_block(Block *prev_block, ActionType type, const void *payload_da
         break;
     case ACT_POST_FINALIZE:
         new_block->data.finalize.target_post_id = ((PayloadFinalize *)payload_data)->target_post_id;
+        break;
+    case ACT_TRANSFER:
+        snprintf(new_block->data.transfer.target_pubkey, SIGNATURE_LEN, "%s", ((PayloadTransfer *)payload_data)->target_pubkey);
+        new_block->data.transfer.amount = ((PayloadTransfer *)payload_data)->amount;
         break;
     default:
         printf("[WARN] Unknown block type during mining.\n");
@@ -390,9 +399,10 @@ void print_cli() {
     printf("[8] 📊 Mostra Stato Globale\n");
     printf("[9] ⏰ [DEBUG] Time Travel (-25h)\n");
     printf("[10] 👑 Importa GOD Wallet (Admin Only)\n"); 
-    printf("[11] Commenta su Post\n");
-    printf("[12] Segui Utente\n");
-    printf("[13] Mostra Commenti di un Post\n");
+    printf("[11] 💬 Commenta su Post\n");
+    printf("[12] ➕ Segui Utente\n");
+    printf("[13] 📖 Mostra Commenti di un Post\n");
+    printf("[14] 🤝 Manda token ad un amico\n"); 
     printf("[0] 💾 Esci e Salva Tutto\n");
     printf("> ");
 }
@@ -458,8 +468,8 @@ int main() {
                 if (b) {
                     last = b;
                     w->registered = 1;
-                    printf("✅ Registrazione confermata nel blocco #%d\n", b->index);
-                    save_wallet_to_disk(); // Aggiorna lo stato "registered" su disco
+                    printf("✅ Registrazione completata (Saldo: 0). Chiedi a un amico di inviarti token!\n");
+                    save_wallet_to_disk();
                 }
                 break;
             }
@@ -478,8 +488,15 @@ int main() {
                     break;
                 }
                 if (id >= 0 && id < global_wallet.count) {
-                    // Verifica Crittografica (Anti-Spoofing locale)
-                    if (user_login(global_wallet.entries[id].priv, global_wallet.entries[id].pub)) {
+                    UserState *u = state_get_user(global_wallet.entries[id].pub);
+                    
+                    if (u) {
+                        if (user_login(global_wallet.entries[id].priv, global_wallet.entries[id].pub)) {
+                            current_user_idx = id;
+                        }
+                    } else {
+                        printf("[LOGIN] ⚠️ Utente locale non ancora sulla blockchain.\n");
+                        printf("         Accesso consentito SOLO per completare la registrazione (Opzione [2]).\n");
                         current_user_idx = id;
                     }
                 } else {
@@ -704,6 +721,32 @@ int main() {
                     curr = curr->next;
                 }
                 printf("----------------------------\n");
+                break;
+            }
+            case 14: { // GIFT TOKENS
+                if (current_user_idx < 0) break;
+                
+                printf("Pubkey del destinatario: ");
+                if (fgets(buffer, sizeof(buffer), stdin) == NULL) break;
+                buffer[strcspn(buffer, "\n")] = 0;
+                
+                // Pulizia buffer
+                char target_pub[SIGNATURE_LEN];
+                snprintf(target_pub, SIGNATURE_LEN, "%.*s", SIGNATURE_LEN - 1, buffer);
+
+                int amount;
+                printf("Quantità token da inviare: ");
+                if (scanf("%d", &amount) != 1) { while(getchar() != '\n'); break; }
+                getchar(); // Consuma newline
+
+                WalletEntry *w = &global_wallet.entries[current_user_idx];
+                PayloadTransfer t;
+                snprintf(t.target_pubkey, SIGNATURE_LEN, "%s", target_pub);
+                t.amount = amount;
+
+                // Chiamata alla nuova funzione (che creeremo in user.c)
+                Block *b = user_transfer(last, &t, w->priv, w->pub);
+                if (b) last = b;
                 break;
             }
             case 0: // EXIT

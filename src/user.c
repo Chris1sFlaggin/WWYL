@@ -2,6 +2,7 @@
 #include "post_state.h" 
 #include <string.h>
 #include "wwyl_config.h"
+#include <openssl/rand.h>
 
 // --- VARIABILI GLOBALI ---
 HashMap *world_state = NULL; 
@@ -56,11 +57,11 @@ void state_add_new_user(const char *wallet_address, const char *username, const 
     if(bio) snprintf(u.bio, 64, "%s", bio);
     if(pic) snprintf(u.pic_url, 128, "%s", pic);
     
-    long long initial_balance = WELCOME_BONUS;
+    long long initial_balance = 0; // <--- DEFAULT ZERO
 
     if (strcmp(wallet_address, GOD_PUB_KEY) == 0) {
         initial_balance = GLOBAL_TOKEN_LIMIT / 2; 
-        printf("👑 [ECONOMY] GOD USER DETECTED! Pre-mining %lld tokens...\n", initial_balance);
+        printf("👑 GOD USER DETECTED.\n");
     }
 
     if (mineTokens(initial_balance)) {
@@ -171,7 +172,11 @@ void rebuild_state_from_chain(Block *genesis) {
     Block *curr = genesis;
     while(curr != NULL) {
         if (curr->type == ACT_REGISTER_USER) {
-            state_add_new_user(curr->sender_pubkey, curr->data.registration.username, NULL, NULL);
+            PayloadRegister *reg = &curr->data.registration;
+    
+            if (curr->index == 0) {
+                state_add_new_user(curr->sender_pubkey, reg->username, reg->bio, reg->pic_url);
+            } 
         }
         else if (curr->type == ACT_POST_CONTENT) {
             post_index_add(curr->index, curr->sender_pubkey);
@@ -209,6 +214,16 @@ void rebuild_state_from_chain(Block *genesis) {
             // [NUOVO] Carica il commento in RAM
             post_register_comment(pid, curr->sender_pubkey, curr->data.comment.content, curr->timestamp);
        }
+       else if (curr->type == ACT_TRANSFER) {
+        UserState *sender = state_get_user(curr->sender_pubkey);
+        UserState *receiver = state_get_user(curr->data.transfer.target_pubkey);
+        int amount = curr->data.transfer.amount;
+        
+        if (sender && receiver && sender->token_balance >= amount) {
+            sender->token_balance -= amount;
+            receiver->token_balance += amount;
+        }
+    }
         curr = curr->next;
     }
     printf("[STATE] Replay Complete.\n");
@@ -229,10 +244,15 @@ char *hashVote(int post_id, int vote_val, const char *salt, const char *pubkey_h
 
 // --- AZIONI MINING ---
 Block *register_user(Block *prev, const void *payload, const char *priv, const char *pub) {
-    if (state_get_user(pub)) return NULL;
+    if (state_get_user(pub)) {
+        printf("⚠️ Utente già registrato.\n");
+        return NULL;
+    }
+    // Nessun controllo sponsor. Chiunque può entrare.
     Block *b = mine_new_block(prev, ACT_REGISTER_USER, payload, pub, priv);
     if(b) {
         const PayloadRegister *reg = (const PayloadRegister*)payload;
+        // La funzione state_add_new_user gestirà il saldo a 0 (tranne per GOD)
         state_add_new_user(pub, reg->username, reg->bio, reg->pic_url);
     }
     return b;
@@ -365,7 +385,6 @@ void state_cleanup() {
 
 // ---------------------------------------------------------
 // AUTENTICAZIONE UTENTE (Challenge-Response)
-// ---------------------------------------------------------
 int user_login(const char *privkey_hex, const char *pubkey_hex) {
     UserState *u = state_get_user(pubkey_hex);
     if (!u) {
@@ -373,17 +392,17 @@ int user_login(const char *privkey_hex, const char *pubkey_hex) {
         return 0;
     }
 
-    // --- FIX CRASH E BUFFER OVERFLOW ---
-    srand(time(NULL));
-    sleep(1); // Piccolo ritardo per variare il seed
-    
-    unsigned int now = (unsigned int)time(NULL);
     char challenge_msg[512] = {0}; // Buffer statico sicuro e pulito
 
     // Generiamo 5 parole casuali e le concateniamo nel buffer sicuro
     for (int i = 0; i < 5; i++) {
-        now += (rand() % 1000) + 1; // Variamo il seed
-        char *temp_word = getRandomWord(now);
+        unsigned int random_seed;
+        if (RAND_bytes((unsigned char*)&random_seed, sizeof(random_seed)) != 1) {
+            printf("[LOGIN] ❌ Errore nella generazione di numeri casuali.\n");
+            return 0;
+        }
+        
+        char *temp_word = getRandomWord(random_seed);
         
         // Concatenazione sicura
         strncat(challenge_msg, temp_word, sizeof(challenge_msg) - strlen(challenge_msg) - 1);
@@ -410,6 +429,7 @@ int user_login(const char *privkey_hex, const char *pubkey_hex) {
     }
 }
 
+
 Block *user_finalize(Block *prev, const void *payload, const char *priv, const char *pub) {
     const PayloadFinalize *req = (const PayloadFinalize*)payload;
     
@@ -424,6 +444,33 @@ Block *user_finalize(Block *prev, const void *payload, const char *priv, const c
     if (b) {
         // Applichiamo subito l'effetto in RAM
         finalize_post_rewards(req->target_post_id);
+    }
+    return b;
+}
+
+Block *user_transfer(Block *prev, const void *payload, const char *priv, const char *pub) {
+    const PayloadTransfer *req = (const PayloadTransfer*)payload;
+    UserState *sender = state_get_user(pub);
+    UserState *receiver = state_get_user(req->target_pubkey);
+
+    if (!sender || sender->token_balance < req->amount) {
+        printf("❌ Fondi insufficienti (Hai: %d, Vuoi inviare: %d)\n", sender ? sender->token_balance : 0, req->amount);
+        return NULL;
+    }
+    if (!receiver) {
+        printf("❌ Destinatario non trovato sulla blockchain.\n");
+        return NULL;
+    }
+    if (req->amount <= 0) {
+        printf("❌ L'importo deve essere positivo.\n");
+        return NULL;
+    }
+
+    Block *b = mine_new_block(prev, ACT_TRANSFER, payload, pub, priv);
+    if (b) {
+        sender->token_balance -= req->amount;
+        receiver->token_balance += req->amount;
+        printf("💸 Trasferimento completato! %d token da @%s a @%s.\n", req->amount, sender->username, receiver->username);
     }
     return b;
 }
