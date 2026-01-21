@@ -14,7 +14,6 @@
 // --- ECONOMIA ---
 #define COSTO_VOTO 2
 #define COSTO_POST 4
-#define WELCOME_BONUS 10
 #define GLOBAL_TOKEN_LIMIT 200000 
 #define MAX_CAPACITY_LOAD 0.75
 

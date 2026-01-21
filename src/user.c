@@ -133,7 +133,7 @@ void finalize_post_rewards(int post_id) {
         if (winning_vote == 1) { 
             author->current_streak++;
             if (author->current_streak > author->best_streak) author->best_streak = author->current_streak;
-            int bonus = author->current_streak;
+            int bonus = author->current_streak*2;
             if (mineTokens(bonus)) {
                 author->token_balance += bonus;
                 printf("🔥 [STREAK] Author Streak x%d! Minted +%d Tokens. (Bal: %d)\n", 
@@ -450,6 +450,12 @@ Block *user_finalize(Block *prev, const void *payload, const char *priv, const c
 
 Block *user_transfer(Block *prev, const void *payload, const char *priv, const char *pub) {
     const PayloadTransfer *req = (const PayloadTransfer*)payload;
+    
+    // [FIX] Anti-Auto-Bonifico
+    if (strcmp(pub, req->target_pubkey) == 0) {
+        printf("❌ Non puoi inviare token a te stesso (inutile spam!).\n");
+        return NULL;
+    }
     UserState *sender = state_get_user(pub);
     UserState *receiver = state_get_user(req->target_pubkey);
 
