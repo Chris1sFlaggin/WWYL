@@ -268,8 +268,19 @@ Block *mine_new_block(Block *prev_block, ActionType type, const void *payload_da
     }
 
     char raw_data_buffer[2048];
-    serialize_block_content(new_block, raw_data_buffer, sizeof(raw_data_buffer));
-    sha256_hash(raw_data_buffer, strlen(raw_data_buffer), new_block->curr_hash);
+    
+    // Proof-of-Work Mining Loop
+    long nonce = 0;
+    char hash_check[3];
+    
+    do {
+        new_block->nonce = nonce++;
+        serialize_block_content(new_block, raw_data_buffer, sizeof(raw_data_buffer));
+        sha256_hash(raw_data_buffer, strlen(raw_data_buffer), new_block->curr_hash);
+        strncpy(hash_check, new_block->curr_hash, 2);
+        hash_check[2] = '\0';
+    } while (strcmp(hash_check, "00") != 0);
+    
     ecdsa_sign(sender_privkey, new_block->curr_hash, new_block->signature);
 
     prev_block->next = new_block;

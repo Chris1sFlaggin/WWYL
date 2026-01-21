@@ -80,6 +80,7 @@ typedef struct Block {
     ActionType type;
     char sender_pubkey[SIGNATURE_LEN]; 
     char signature[SIGNATURE_LEN]; 
+    int nonce;
     
     union {
         PayloadPost post;
