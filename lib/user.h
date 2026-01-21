@@ -1,7 +1,3 @@
-{
-type: uploaded file
-fileName: chris1sflaggin/wwyl/WWYL-5d5d49d0c02d946b09a25635bab3660a8ba42b9a/lib/user.h
-fullContent:
 #ifndef USER_H
 #define USER_H
 
@@ -72,4 +68,3 @@ void finalize_post_rewards(int post_id);
 int mineTokens(long long amount);
 
 #endif
-}
