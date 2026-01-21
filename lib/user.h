@@ -1,7 +1,11 @@
+{
+type: uploaded file
+fileName: chris1sflaggin/wwyl/WWYL-5d5d49d0c02d946b09a25635bab3660a8ba42b9a/lib/user.h
+fullContent:
 #ifndef USER_H
 #define USER_H
 
-#define _GNU_SOURCE  // Add this at the top
+#define _GNU_SOURCE
 
 #include "wwyl.h"
 #include "utils.h"
@@ -10,7 +14,10 @@
 #include <unistd.h>
 
 #define COSTO_TOKEN_BASE 1 
+
+// Variabili globali condivise
 extern float global_inflation_multiplier; 
+extern long long global_tokens_circulating; // <--- AGGIUNTO: Serve al main per mostrare i token
 
 // Configurazione Hashmap
 #define STATE_MAP_SIZE 1024 
@@ -58,8 +65,11 @@ Block *user_reveal(Block *prev_block, const void *payload, const char *privkey_h
 Block *user_finalize(Block *prev_block, const void *payload, const char *privkey_hex, const char *pubkey_hex);
 Block *user_transfer(Block *prev_block, const void *payload, const char *privkey_hex, const char *pubkey_hex);
 
-// --- ECONOMIA ---
+// --- NUOVE FUNZIONI ECONOMIA (AGGIUNTE) ---
+float get_economy_multiplier(); // <--- FIX: Ora wwyl.c la vede
+void buy_tokens_sim(const char *user_pubkey, int amount_tokens); // <--- FIX: Ora wwyl.c la vede
 void finalize_post_rewards(int post_id);
 int mineTokens(long long amount);
 
 #endif
+}
