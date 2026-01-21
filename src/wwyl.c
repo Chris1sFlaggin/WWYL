@@ -141,16 +141,18 @@ void serialize_block_content(const Block *block, char *buffer, size_t size) {
             break;
     }
 
-    int len = snprintf(buffer, size, "%u:%ld:%s:%s:%d:%s",
-             block->index,
-             block->timestamp,
-             block->prev_hash,
-             block->sender_pubkey,
-             block->type,
-             payload_str);
-             
+    int len = snprintf(buffer, size, "%u:%ld:%s:%s:%d:%d:%s", // <--- Aggiungi formato
+        block->index,
+        block->timestamp,
+        block->prev_hash,
+        block->sender_pubkey,
+        block->type,
+        block->nonce,  
+        payload_str);
+        
     if (len < 0 || (size_t)len >= size) {
-        fatal_error("Block serialization buffer overflow!");
+       // Ora puoi usare return invece di fatal_error per non crashare
+       fprintf(stderr, "[ERR] Buffer overflow serialization\n");
     }
 }
 
@@ -321,6 +323,11 @@ int verifyFullChain(Block *genesis) {
         ecdsa_verify(curr->sender_pubkey, curr->curr_hash, curr->signature, &is_valid);
         if (!is_valid) {
             fprintf(stderr, "[ALERT] INVALID SIGNATURE at Block #%d!\n", curr->index);
+            return 0;
+        }
+
+        if (curr->index > 0 && strncmp(curr->curr_hash, "00", 2) != 0) {
+            fprintf(stderr, "[ALERT] POW FAILED at Block #%d! Hash does not start with 00.\n", curr->index);
             return 0;
         }
         
