@@ -8,7 +8,9 @@
 WalletStore global_wallet;
 int current_user_idx = -1;
 
-// --- PERSISTENZA WALLET ---
+// ---------------------------------------------------------
+// SALVA WALLET SU DISCO
+// ---------------------------------------------------------
 void save_wallet_to_disk() {
     FILE *f = fopen(WALLET_FILE, "wb");
     if (!f) {
@@ -20,6 +22,9 @@ void save_wallet_to_disk() {
     printf("[WALLET] Chiavi salvate in '%s'.\n", WALLET_FILE);
 }
 
+// ---------------------------------------------------------
+// CARICA WALLET DA DISCO
+// ---------------------------------------------------------
 void load_wallet_from_disk() {
     FILE *f = fopen(WALLET_FILE, "rb");
     if (!f) {
@@ -57,48 +62,79 @@ int integrity_check(Block *prev, Block *curr) {
 }
 
 // ---------------------------------------------------------
+// SANITIZZA STRINGHE PER SERIALIZZAZIONE
+// ---------------------------------------------------------
+static void sanitize_string(char *str) {
+    if (!str) return;
+    for (size_t i = 0; str[i] != '\0'; i++) {
+        if (str[i] < 32 || str[i] == ':' || str[i] == '\n' || str[i] == '\r') {
+            str[i] = '_';
+        }
+    }
+}
+
+// ---------------------------------------------------------
 // HELPER: Serializzazione per Hashing
 // ---------------------------------------------------------
 void serialize_block_content(const Block *block, char *buffer, size_t size) {
     char payload_str[MAX_CONTENT_LEN + 20]; 
+    char temp_content[MAX_CONTENT_LEN];
+    char temp_username[32];
+    char temp_bio[64];
+    char temp_pic[128];
+    char temp_pubkey[SIGNATURE_LEN];
+    char temp_hash[HASH_LEN];
+    char temp_salt[32];
     
     switch (block->type) {
         case ACT_POST_CONTENT:
-            snprintf(payload_str, sizeof(payload_str), "%s", block->data.post.content);
+            snprintf(temp_content, sizeof(temp_content), "%.*s", MAX_CONTENT_LEN - 1, block->data.post.content);
+            sanitize_string(temp_content);
+            snprintf(payload_str, sizeof(payload_str), "%s", temp_content);
             break;
         case ACT_REGISTER_USER:
-            snprintf(payload_str, sizeof(payload_str), "%s:%s:%s", 
-                     block->data.registration.username, 
-                     block->data.registration.bio,
-                     block->data.registration.pic_url);
+            snprintf(temp_username, sizeof(temp_username), "%.*s", 31, block->data.registration.username);
+            snprintf(temp_bio, sizeof(temp_bio), "%.*s", 63, block->data.registration.bio);
+            snprintf(temp_pic, sizeof(temp_pic), "%.*s", 127, block->data.registration.pic_url);
+            sanitize_string(temp_username);
+            sanitize_string(temp_bio);
+            sanitize_string(temp_pic);
+            snprintf(payload_str, sizeof(payload_str), "%s:%s:%s", temp_username, temp_bio, temp_pic);
             break;
         case ACT_POST_COMMENT:
+            snprintf(temp_content, sizeof(temp_content), "%.*s", MAX_CONTENT_LEN - 1, block->data.comment.content);
+            sanitize_string(temp_content);
             snprintf(payload_str, sizeof(payload_str), "%d:%s",
                      block->data.comment.target_post_id,
-                     block->data.comment.content);
+                     temp_content);
             break;
         case ACT_VOTE_COMMIT:
+            snprintf(temp_hash, sizeof(temp_hash), "%.*s", HASH_LEN - 1, block->data.commit.vote_hash);
+            sanitize_string(temp_hash);
             snprintf(payload_str, sizeof(payload_str), "%d:%s",
                      block->data.commit.target_post_id,
-                     block->data.commit.vote_hash);
+                     temp_hash);
             break;
         case ACT_VOTE_REVEAL:
+            snprintf(temp_salt, sizeof(temp_salt), "%.*s", 31, block->data.reveal.salt_secret);
+            sanitize_string(temp_salt);
             snprintf(payload_str, sizeof(payload_str), "%d:%d:%s",      
                      block->data.reveal.target_post_id,
                      block->data.reveal.vote_value,
-                     block->data.reveal.salt_secret);
+                     temp_salt);
             break;
         case ACT_FOLLOW_USER:
-            snprintf(payload_str, sizeof(payload_str), "%s",
-                     block->data.follow.target_user_pubkey);
+            snprintf(temp_pubkey, sizeof(temp_pubkey), "%.*s", SIGNATURE_LEN - 1, block->data.follow.target_user_pubkey);
+            sanitize_string(temp_pubkey);
+            snprintf(payload_str, sizeof(payload_str), "%s", temp_pubkey);
             break;
         case ACT_POST_FINALIZE:
             snprintf(payload_str, sizeof(payload_str), "%d", block->data.finalize.target_post_id);
             break;
         case ACT_TRANSFER:
-            snprintf(payload_str, sizeof(payload_str), "%s:%d", 
-                     block->data.transfer.target_pubkey, 
-                     block->data.transfer.amount);
+            snprintf(temp_pubkey, sizeof(temp_pubkey), "%.*s", SIGNATURE_LEN - 1, block->data.transfer.target_pubkey);
+            sanitize_string(temp_pubkey);
+            snprintf(payload_str, sizeof(payload_str), "%s:%d", temp_pubkey, block->data.transfer.amount);
             break;
         default:
             snprintf(payload_str, sizeof(payload_str), "UNKNOWN");
@@ -258,6 +294,7 @@ int verifyFullChain(Block *genesis) {
     char temp_hash[HASH_LEN + 1];
     char raw_buffer[2048];
     int count = 1;
+    int is_valid = 0;
 
     printf("\n[SECURITY] Avvio verifica integrità blockchain...\n");
     while (curr != NULL) {
@@ -268,6 +305,14 @@ int verifyFullChain(Block *genesis) {
             fprintf(stderr, "[ALERT] DATA TAMPERING at Block #%d!\n", curr->index);
             return 0; 
         }
+        
+        // Verifica firma ECDSA
+        ecdsa_verify(curr->sender_pubkey, curr->curr_hash, curr->signature, &is_valid);
+        if (!is_valid) {
+            fprintf(stderr, "[ALERT] INVALID SIGNATURE at Block #%d!\n", curr->index);
+            return 0;
+        }
+        
         prev = curr;
         curr = curr->next;
         count++;
@@ -337,9 +382,8 @@ Block *load_blockchain() {
 }
 
 // ---------------------------------------------------------
-// MAIN
+// TIME TRAVEL HACK
 // ---------------------------------------------------------
-// Funzione helper per simulare il passaggio del tempo
 void time_travel_hack(int post_id, int hours_forward) {
     PostState *p = post_index_get(post_id);
     if(p) {
@@ -348,6 +392,9 @@ void time_travel_hack(int post_id, int hours_forward) {
     }
 }
 
+// ---------------------------------------------------------
+// FREE BLOCKCHAIN
+// ---------------------------------------------------------
 void free_blockchain(Block *genesis) {
     Block *curr = genesis;
     while (curr != NULL) {
@@ -358,13 +405,17 @@ void free_blockchain(Block *genesis) {
     printf("[MEM] Blockchain memory freed successfully.\n");
 }
 
-// Helper per pulire chiavi sensibili (Security Best Practice)
+// ---------------------------------------------------------
+// SECURE MEMZERO
+// ---------------------------------------------------------
 void secure_memzero(void *ptr, size_t size) {
     volatile unsigned char *p = ptr;
     while (size--) *p++ = 0;
 }
 
-// Esempio di snippet per stampare i commenti di un post
+// ---------------------------------------------------------
+// PRINT COMMENTS DI UN POST
+// ---------------------------------------------------------
 void print_post_comments(int post_id) {
     PostState *p = post_index_get(post_id);
     if (!p) return;
@@ -377,6 +428,9 @@ void print_post_comments(int post_id) {
     }
 }
 
+// ---------------------------------------------------------
+// PRINT CLI
+// ---------------------------------------------------------
 void print_cli() {
     printf("\n=== WWYL NODE CLI ===\n");
     if (current_user_idx >= 0) {
@@ -407,6 +461,9 @@ void print_cli() {
     printf("> ");
 }
 
+// ---------------------------------------------------------
+// MAIN
+// ---------------------------------------------------------
 int main() {
     // 1. Caricamento Blockchain (Ledger Pubblico)
     Block *blockchain = load_blockchain();

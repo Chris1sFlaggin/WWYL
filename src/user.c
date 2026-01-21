@@ -4,19 +4,22 @@
 #include "wwyl_config.h"
 #include <openssl/rand.h>
 
-// --- VARIABILI GLOBALI ---
 HashMap *world_state = NULL; 
 RelationNode *relation_map[REL_MAP_SIZE];
 long long global_tokens_circulating = 0;
 
-// --- ECONOMY HELPERS ---
+// ------------------------------------------------------------
+// MINING TOKENS
+// ------------------------------------------------------------
 int mineTokens(long long amount) {
     if (global_tokens_circulating + amount > GLOBAL_TOKEN_LIMIT) return 0;
     global_tokens_circulating += amount;
     return 1;
 }
 
-// --- HASH FUNCTIONS ---
+// ------------------------------------------------------------
+// HASH FUNCTION DJB2
+// ------------------------------------------------------------
 unsigned long hash_djb2(const char *str, int map_size) {
     unsigned long hash = 5381;
     int c;
@@ -24,6 +27,9 @@ unsigned long hash_djb2(const char *str, int map_size) {
     return hash % map_size;
 }
 
+// ------------------------------------------------------------
+// HASH FUNCTION RELATION MAP
+// ------------------------------------------------------------
 unsigned long hash_rel(const char *key) {
     unsigned long hash = 5381;
     int c;
@@ -31,16 +37,24 @@ unsigned long hash_rel(const char *key) {
     return hash % REL_MAP_SIZE;
 }
 
-// --- STATE MANAGEMENT ---
+// -----------------------------------------------------------
+// INITIALIZE STATE
+// -----------------------------------------------------------
 void state_init() {
     world_state = map_create(INITIAL_MAP_SIZE, hash_str, cmp_str, free, free);
 }
 
+// -----------------------------------------------------------
+// GET USER STATE
+// -----------------------------------------------------------
 UserState *state_get_user(const char *wallet_address) {
     if (!world_state) return NULL;
     return (UserState *)map_get(world_state, wallet_address);
 }
 
+// -----------------------------------------------------------
+// UPDATE USER STATE
+// -----------------------------------------------------------
 void state_update_user(const char *wallet_address, const UserState *new_state) {
     UserState *stored_state = safe_zalloc(sizeof(UserState));
     memcpy(stored_state, new_state, sizeof(UserState));
@@ -50,6 +64,9 @@ void state_update_user(const char *wallet_address, const UserState *new_state) {
     map_put(world_state, key_dup, stored_state);
 }
 
+// -----------------------------------------------------------
+// ADD NEW USER
+// -----------------------------------------------------------
 void state_add_new_user(const char *wallet_address, const char *username, const char *bio, const char *pic) {
     UserState u = {0};
     snprintf(u.wallet_address, SIGNATURE_LEN, "%s", wallet_address);
@@ -74,7 +91,9 @@ void state_add_new_user(const char *wallet_address, const char *username, const 
     printf("[STATE] New User: %s (Bal: %d)\n", u.username, u.token_balance);
 }
 
-// --- FOLLOW LOGIC ---
+// -----------------------------------------------------------
+// CLEANUP STATE
+// -----------------------------------------------------------
 int state_check_follow_status(const char *follower, const char *target) {
     char key[2048];
     snprintf(key, sizeof(key), "%s:%s", follower, target);
@@ -87,6 +106,9 @@ int state_check_follow_status(const char *follower, const char *target) {
     return 0;
 }
 
+// -----------------------------------------------------------
+// TOGGLE FOLLOW STATUS
+// -----------------------------------------------------------
 void state_toggle_follow(const char *follower, const char *target) {
     char key[2048];
     snprintf(key, sizeof(key), "%s:%s", follower, target);
@@ -115,7 +137,9 @@ void state_toggle_follow(const char *follower, const char *target) {
     if (u_target) u_target->followers_count++;
 }
 
-// --- LOGICA DI GIOCO (REWARDS & STREAK) ---
+// -----------------------------------------------------------
+// FINALIZE POST REWARDS
+// -----------------------------------------------------------
 void finalize_post_rewards(int post_id) {
     PostState *p = post_index_get(post_id);
     if (!p || p->finalized) return;
@@ -164,7 +188,9 @@ void finalize_post_rewards(int post_id) {
     printf("[ECONOMY] Post #%d Finalized. Pool: %d.\n", post_id, p->pull);
 }
 
-// --- REBUILD ---
+// -----------------------------------------------------------
+// REBUILD STATE FROM CHAIN
+// -----------------------------------------------------------
 void rebuild_state_from_chain(Block *genesis) {
     printf("[STATE] Replaying Blockchain History...\n");
     global_tokens_circulating = 0; 
@@ -229,11 +255,17 @@ void rebuild_state_from_chain(Block *genesis) {
     printf("[STATE] Replay Complete.\n");
 }
 
+// ---------------------------------------------------------
+// CHECK 24 ORE
+// ---------------------------------------------------------
 int check24hrs(time_t post_timestamp, time_t current_time) {
     double diff = difftime(current_time, post_timestamp);
     return (diff >= 0 && diff <= 86400);
 }
 
+// ---------------------------------------------------------
+// HASH VOTO
+// ---------------------------------------------------------
 char *hashVote(int post_id, int vote_val, const char *salt, const char *pubkey_hex) {
     char combined[1024]; 
     snprintf(combined, sizeof(combined), "%d:%d:%s:%s", post_id, vote_val, salt, pubkey_hex);
@@ -242,7 +274,9 @@ char *hashVote(int post_id, int vote_val, const char *salt, const char *pubkey_h
     return hash_output;
 }
 
-// --- AZIONI MINING ---
+// ---------------------------------------------------------
+// REGISTER USER
+// ---------------------------------------------------------
 Block *register_user(Block *prev, const void *payload, const char *priv, const char *pub) {
     if (state_get_user(pub)) {
         printf("⚠️ Utente già registrato.\n");
@@ -258,6 +292,9 @@ Block *register_user(Block *prev, const void *payload, const char *priv, const c
     return b;
 }
 
+// ---------------------------------------------------------
+// POST CONTENT
+// ---------------------------------------------------------
 Block *user_post(Block *prev, const void *payload, const char *priv, const char *pub) {
     UserState *u = state_get_user(pub);
     if (!u || u->token_balance < COSTO_POST) {
@@ -274,6 +311,9 @@ Block *user_post(Block *prev, const void *payload, const char *priv, const char 
     return b;
 }
 
+// ---------------------------------------------------------
+// COMMIT VOTE
+// ---------------------------------------------------------
 Block *user_like(Block *prev, const void *payload, const char *priv, const char *pub) {
     UserState *u = state_get_user(pub);
     if (!u || u->token_balance < COSTO_VOTO) {
@@ -300,6 +340,9 @@ Block *user_like(Block *prev, const void *payload, const char *priv, const char 
     return b;
 }
 
+// ---------------------------------------------------------
+// REVEAL VOTE
+// ---------------------------------------------------------
 Block *user_reveal(Block *prev, const void *payload, const char *priv, const char *pub) {
     const PayloadReveal *raw = (const PayloadReveal *)payload;
     PostState *post = post_index_get(raw->target_post_id);
@@ -321,6 +364,9 @@ Block *user_reveal(Block *prev, const void *payload, const char *priv, const cha
     return b;
 }
 
+// ---------------------------------------------------------
+// FOLLOW USER
+// ---------------------------------------------------------
 Block *user_follow(Block *prev, const void *payload, const char *priv, const char *pub) {
     if (!payload) return NULL;
     
@@ -347,6 +393,9 @@ Block *user_follow(Block *prev, const void *payload, const char *priv, const cha
     return b;
 }
 
+// ---------------------------------------------------------
+// COMMENTO POST
+// ---------------------------------------------------------
 Block *user_comment(Block *prev, const void *payload, const char *priv, const char *pub) {
     const PayloadComment *req = (const PayloadComment*)payload;
 
@@ -366,6 +415,9 @@ Block *user_comment(Block *prev, const void *payload, const char *priv, const ch
     return b;
 }
 
+// ---------------------------------------------------------
+// PULIZIA MEMORIA
+// ---------------------------------------------------------
 void state_cleanup() {
     if (world_state) {
         map_destroy(world_state); 
@@ -385,6 +437,7 @@ void state_cleanup() {
 
 // ---------------------------------------------------------
 // AUTENTICAZIONE UTENTE (Challenge-Response)
+// ---------------------------------------------------------
 int user_login(const char *privkey_hex, const char *pubkey_hex) {
     UserState *u = state_get_user(pubkey_hex);
     if (!u) {
@@ -429,7 +482,9 @@ int user_login(const char *privkey_hex, const char *pubkey_hex) {
     }
 }
 
-
+// ---------------------------------------------------------
+// FINALIZZAZIONE POST E DISTRIBUZIONE PREMI
+// ---------------------------------------------------------
 Block *user_finalize(Block *prev, const void *payload, const char *priv, const char *pub) {
     const PayloadFinalize *req = (const PayloadFinalize*)payload;
     
@@ -448,6 +503,9 @@ Block *user_finalize(Block *prev, const void *payload, const char *priv, const c
     return b;
 }
 
+// ---------------------------------------------------------
+// TRASFERIMENTO TOKEN TRA UTENTI
+// ---------------------------------------------------------
 Block *user_transfer(Block *prev, const void *payload, const char *priv, const char *pub) {
     const PayloadTransfer *req = (const PayloadTransfer*)payload;
     

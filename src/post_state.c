@@ -7,8 +7,9 @@
 
 HashMap *global_post_index = NULL;
 
-// --- DISTRUTTORE CUSTOM PER LA MAPPA ---
-// Questa funzione viene chiamata automaticamente da map_destroy per ogni post
+// ---------------------------------------------------------
+// FREE WRAPPER CUSTOM PER POSTSTATE
+// ---------------------------------------------------------
 void free_post_state_wrapper(void *data) {
     PostState *p = (PostState*)data;
     if (!p) return;
@@ -38,7 +39,10 @@ void free_post_state_wrapper(void *data) {
     }
     free(p);
 }
-// --- INIT ---
+
+// ---------------------------------------------------------
+// INIZIALIZZAZIONE INDICE POST
+// ---------------------------------------------------------
 void post_index_init() {
     // Configurazione Mappa:
     // Key: (void*)int (ID Post) -> Nessuna free necessaria (NULL)
@@ -46,7 +50,9 @@ void post_index_init() {
     global_post_index = map_create(INITIAL_POST_MAP_SIZE, hash_int_direct, cmp_int_direct, NULL, free_post_state_wrapper);
 }
 
-// --- CLEANUP ---
+// ---------------------------------------------------------
+// PULIZIA INDICE POST
+// ---------------------------------------------------------
 void post_index_cleanup() {
     // Ora basta chiamare map_destroy e lei chiamerà free_post_state_wrapper per ogni elemento
     if (global_post_index) {
@@ -55,7 +61,9 @@ void post_index_cleanup() {
     }
 }
 
-// --- LOGICA AGGIUNTA/GET ---
+// ---------------------------------------------------------
+// API INDICE POST
+// ---------------------------------------------------------
 void post_index_add(int post_id, const char *author) {
     PostState *p = safe_zalloc(sizeof(PostState));
     p->post_id = post_id;
@@ -67,21 +75,32 @@ void post_index_add(int post_id, const char *author) {
     map_put(global_post_index, (void*)(uintptr_t)post_id, p);
 }
 
+// ---------------------------------------------------------
+// RECUPERA STATO POST
+// ---------------------------------------------------------
 PostState *post_index_get(int post_id) {
     if (!global_post_index) return NULL;
     return (PostState *)map_get(global_post_index, (void*)(uintptr_t)post_id);
 }
 
+// ---------------------------------------------------------
+// CHECK ESISTENZA POST
+// ---------------------------------------------------------
 int post_index_exists(int post_id) {
     return post_index_get(post_id) != NULL;
 }
 
+// ---------------------------------------------------------
+// RECUPERA AUTORE POST
+// ---------------------------------------------------------
 char *post_index_author(int post_id) {
     PostState *p = post_index_get(post_id);
     return p ? p->author_pubkey : NULL;
 }
 
-// --- LOGICA VOTI ---
+// ---------------------------------------------------------
+// API VOTI
+// ---------------------------------------------------------
 void post_register_commit(int post_id, const char *voter, const char *hash) {
     PostState *p = post_index_get(post_id);
     if (!p) return;
@@ -100,6 +119,9 @@ void post_register_commit(int post_id, const char *voter, const char *hash) {
     p->commits = node;
 }
 
+// ---------------------------------------------------------
+// VERIFICA COMMIT
+// ---------------------------------------------------------
 int post_verify_commit(int post_id, const char *voter, const char *calculated_hash) {
     PostState *p = post_index_get(post_id);
     if (!p) return 0;
@@ -114,6 +136,9 @@ int post_verify_commit(int post_id, const char *voter, const char *calculated_ha
     return 0;
 }
 
+// ---------------------------------------------------------
+// REGISTRA REVEAL
+// ---------------------------------------------------------
 void post_register_reveal(int post_id, const char *voter, int vote_val) {
     PostState *p = post_index_get(post_id);
     if (!p || !p->is_open) return;
@@ -128,6 +153,9 @@ void post_register_reveal(int post_id, const char *voter, int vote_val) {
     p->reveals = node;
 }
 
+// ---------------------------------------------------------
+// REGISTRA COMMENTO
+// ---------------------------------------------------------
 void post_register_comment(int post_id, const char *author, const char *content, time_t timestamp) {
     PostState *p = post_index_get(post_id);
     if (!p) return;
