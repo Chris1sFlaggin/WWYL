@@ -37,34 +37,64 @@ void errExit(const char *msg) {
     exit(EXIT_FAILURE);
 }
 
-char *getRandomWord(unsigned int random_seed) {
+char *getRandomWord(void) {
     char *path = "words.txt";
     FILE *file = fopen(path, "r");
     if (!file) {
         fatal_error("Could not open words file: %s", path);
     }
-    srand(random_seed);
+
+    // 1. Conta le linee totali (Primo passaggio)
+    unsigned int line_count = 0;
     char buffer[256];
-    char *selected_word = NULL;
-    int line_count = 0;
-    
     while (fgets(buffer, sizeof(buffer), file)) {
         line_count++;
-        if (rand() % line_count == 0) {
-            if (selected_word) {
-                free(selected_word); 
-            }
-            
+    }
+
+    if (line_count == 0) {
+        fclose(file);
+        fatal_error("Words file is empty: %s", path);
+    }
+
+    // 2. Genera un indice crittograficamente sicuro [0, line_count - 1]
+    unsigned int random_index = 0;
+    unsigned int range_max = UINT_MAX;
+    
+    // Calcoliamo il limite per evitare il "Modulo Bias"
+    // (Se UINT_MAX non è divisibile perfettamente per line_count, i primi numeri uscirebbero più spesso)
+    unsigned int secure_limit = range_max - (range_max % line_count);
+
+    do {
+        if (RAND_bytes((unsigned char*)&random_index, sizeof(random_index)) != 1) {
+             fclose(file);
+             fatal_error("RAND_bytes failed during word selection.");
+        }
+    } while (random_index >= secure_limit); // Scarta i numeri fuori range (Rejection Sampling)
+    
+    random_index %= line_count; // Ora il modulo è sicuro e uniforme
+
+    // 3. Recupera la parola corrispondente all'indice (Secondo passaggio)
+    rewind(file);
+    unsigned int current = 0;
+    char *selected_word = NULL;
+    
+    while (fgets(buffer, sizeof(buffer), file)) {
+        if (current == random_index) {
             size_t len = strlen(buffer);
             if (len > 0 && buffer[len - 1] == '\n') {
-                buffer[len - 1] = '\0';
+                buffer[len - 1] = '\0'; // Rimuove newline
             }
             selected_word = strdup(buffer);
+            break;
         }
+        current++;
     }
+
     fclose(file);
+    
     if (!selected_word) {
-        fatal_error("No words found in file: %s", path);
+        fatal_error("Error retrieving word at index %u", random_index);
     }
+    
     return selected_word;
 }

@@ -477,22 +477,12 @@ int user_login(const char *privkey_hex, const char *pubkey_hex) {
         return 0;
     }
 
-    char challenge_msg[512] = {0}; // Buffer statico sicuro e pulito
+    char challenge_msg[512] = {0}; 
 
-    // Generiamo 5 parole casuali e le concateniamo nel buffer sicuro
     for (int i = 0; i < 5; i++) {
-        unsigned int random_seed;
-        if (RAND_bytes((unsigned char*)&random_seed, sizeof(random_seed)) != 1) {
-            printf("[LOGIN] ❌ Errore nella generazione di numeri casuali.\n");
-            return 0;
-        }
+        char *temp_word = getRandomWord(); 
         
-        char *temp_word = getRandomWord(random_seed);
-        
-        // Concatenazione sicura
         strncat(challenge_msg, temp_word, sizeof(challenge_msg) - strlen(challenge_msg) - 1);
-        
-        // FONDAMENTALE: Liberare la memoria allocata da strdup in getRandomWord
         free(temp_word); 
     }
 
