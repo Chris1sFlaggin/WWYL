@@ -47,9 +47,14 @@ char *getRandomWord(unsigned int random_seed) {
     char buffer[256];
     char *selected_word = NULL;
     int line_count = 0;
+    
     while (fgets(buffer, sizeof(buffer), file)) {
         line_count++;
         if (rand() % line_count == 0) {
+            if (selected_word) {
+                free(selected_word); 
+            }
+            
             size_t len = strlen(buffer);
             if (len > 0 && buffer[len - 1] == '\n') {
                 buffer[len - 1] = '\0';
